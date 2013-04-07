@@ -589,16 +589,47 @@ struct method {
 
 /*@
     predicate node(struct node *node, int value, struct thread *thread, struct node *next) = 
-        malloc_block_node(node)
+        node != 0
+            &*& malloc_block_node(node)
             &*& node->value |-> value
             &*& node->thread |-> thread
             &*& node->next |-> next;
     predicate nodes(struct node *node, int count) = 
         node == 0 ?
             count == 0 :
-                node(node, ?value, ?thread, ?next)
+                0 < count
+                    &*& node(node, ?value, ?thread, ?next)
                     &*& nodes(next, count - 1);
-                    
+    predicate lseg(struct node *first, struct node *last, int count) = 
+        first == last ?
+            count == 0 :
+                0 < count 
+                    &*& node(first, ?value, ?thread, ?next)
+                    &*& lseg(next, last, count - 1);
+    lemma void nodes_to_lseg_lemma(struct node *first)
+        requires nodes(first, ?count);
+        ensures lseg(first, 0, count);
+    {
+        open nodes(first, count);
+        if (first != 0) {
+            open node(first, ?value, ?thread, ?next);
+            nodes_to_lseg_lemma(first->next);
+            close node(first, value, thread, next);
+        }
+        close lseg(first, 0, count);
+    }
+    lemma void lseg_to_nodes_lemma(struct node *first)
+        requires lseg(first, 0, ?count);
+        ensures nodes(first, count);
+    {
+        open lseg(first, 0, count);
+        if (first != 0) {
+            open node(first, ?value, ?thread, ?next);
+            lseg_to_nodes_lemma(first->next);
+            close node(first, value, thread, next);
+        }
+        close nodes(first, count);
+    }
 @*/
 struct node {
     int value;
@@ -634,16 +665,17 @@ void node_set_value(struct node *n, int value)
 
 struct node *node_at(struct node *n, int index)
     //@ requires nodes(n, ?count) &*& 0 <= index &*& index < count;
-    //@ ensures nodes(n, count) &*& index == 0 ? result == n : nodes(result, count - index);
+    //@ ensures lseg(n, result, index + 1) &*& lseg(result, 0, count - index);
 {
+    //@ nodes_to_lseg_lemma(n);
     if(index == 0) {
         return n;
     } else {
-        //@ open nodes(n, count);
+        //@ open lseg(n, 0, count);
         //@ open node(n, ?value, ?thread, ?next);
         struct node *res = node_at(n->next, index - 1);
         //@ close node(n, value, thread, next);
-        //@ close nodes(res, count - 1);
+        //@ close lseg(n, count);
         return res;
     }
 }
