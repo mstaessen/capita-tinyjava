@@ -5,7 +5,7 @@ LDFLAGS =
 
 JAVAC   = javac
 
-VF      = /path/to/verifast
+VF      = /usr/local/opt/verifast-12.12/bin/verifast
 
 MKDIR   = mkdir
 MDFLAGS = -p
