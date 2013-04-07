@@ -588,17 +588,16 @@ struct method {
 // }
 
 /*@
-    inductive node_list = empty_node_list | node_list_el(int value, struct thread *thread, node_list tail);
-    predicate nodes(struct node *node, node_list values, int count) = 
+    predicate node(struct node *node, int value, struct thread *thread, struct node *next) = 
+        malloc_block_node(node)
+            &*& node->value |-> value
+            &*& node->thread |-> thread
+            &*& node->next |-> next;
+    predicate nodes(struct node *node, int count) = 
         node == 0 ?
-            values == empty_node_list &*& count == 0 :
-                malloc_block_node(node)
-                    &*& node->value |-> ?value
-                    &*& node->thread |-> ?thread
-                    &*& node->next |-> ?next 
-                    &*& 0 < count
-                    &*& values == node_list_el(value, thread, ?next_values)
-                    &*& nodes(next, next_values, count - 1);
+            count == 0 :
+                node(node, ?value, ?thread, ?next)
+                    &*& nodes(next, count - 1);
                     
 @*/
 struct node {
@@ -608,106 +607,105 @@ struct node {
 };
 
 int node_get_value(struct node *n)
-    //@ requires nodes(n, node_list_el(?value, ?thread, ?tail), ?count);
-    //@ ensures nodes(n, node_list_el(value, 0, tail), count) &*& result == value;
+    //@ requires node(n, ?value, ?thread, ?next);
+    //@ ensures node(n, value, 0, next) &*& result == value;
 {
-    //@ open nodes(n, node_list_el(value, thread, tail), count);
+    //@ open node(n, value, thread, next);
     if(n->thread != 0) {
-        // FIXME thread_join(n->thread);
+         // FIXME thread_join(n->thread);
     }
     n->thread = 0;
     return n->value;
-    //@ close nodes(n, node_list_el(value, 0, tail), count);
+    //@ close node(n, value, 0, next);
 }
 
 void node_set_value(struct node *n, int value)
-    //@ requires nodes(n, node_list_el(_, ?thread, ?tail), ?count);
-    //@ ensures nodes(n, node_list_el(value, 0, tail), count);
+    //@ requires node(n, _, ?thread, ?next);
+    //@ ensures node(n, value, 0, next);
 {
-    //@ open nodes(n, node_list_el(_, thread, tail), count);
+    //@ open node(n, _, thread, next);
     if(n->thread != 0) {
         // FIXME thread_join(n->thread);
     }
     n->thread = 0;
     n->value = value;
-    //@ close nodes(n, node_list_el(value, 0, tail), count);
+    //@ close node(n, value, 0, next);
 }
 
 struct node *node_at(struct node *n, int index)
-    //@ requires nodes(n, ?values, ?count) &*& 0 <= index &*& index < count;
-    //@ ensures nodes(n, values, count);
+    //@ requires nodes(n, ?count) &*& 0 <= index &*& index < count;
+    //@ ensures nodes(n, count) &*& index == 0 ? result == n : nodes(result, count - index);
 {
-    //@ open nodes(n, values, count);
     if(index == 0) {
-        //@ close nodes(n, values, count);
         return n;
     } else {
-        //@ open nodes(?next, ?next_values, count - 1);
-        //@ close nodes(next, next_values, count - 1);
+        //@ open nodes(n, count);
+        //@ open node(n, ?value, ?thread, ?next);
         struct node *res = node_at(n->next, index - 1);
+        //@ close node(n, value, thread, next);
+        //@ close nodes(res, count - 1);
         return res;
-        //@ close nodes(n, values, count);
     }
 }
 
-/*@
-    predicate stack(struct stack *stack, node_list values, int count) = 
-        malloc_block_stack(stack)
-            &*& stack->top |-> ?top
-            &*& stack->count |-> count
-            &*& 0 <= count
-            &*& nodes(top, values, count);
-@*/
-struct stack {
-    struct node *top;
-    int count;
-};
-
-struct stack *create_stack()
-    //@ requires true;
-    //@ ensures stack(result, empty_node_list, 0);
-{
-    int i;
-    struct stack *s = malloc(sizeof(struct stack));
-    if(s == 0) {
-        error("ERROR: insufficient memory");
-    }
-    s->top = 0;
-    s->count = 0;
-    //@ close nodes(s->top, empty_node_list, 0);
-    //@ close stack(s, empty_node_list, 0);
-    return s;
-}
-
-void stack_dispose(struct stack *s)
-    //@ requires stack(s, empty_node_list, 0);
-    //@ ensures true;
-{
-    //@ open stack(s, empty_node_list, 0);
-    //@ open nodes(s->top, empty_node_list, 0);
-    free(s);
-}
-
-void stack_push(struct stack *s, int value)
-    //@ requires stack(s, ?values, ?count);
-    //@ ensures stack(s, node_list_el(value, 0, values), count + 1);
-{
-    //@ open stack(s, values, count);
-    struct node *new_node = malloc(sizeof(struct node));
-    if(new_node == 0) {
-        error("ERROR: insufficient memory");
-    }
-    new_node->next = s->top;
-    new_node->value = value;
-    new_node->thread = 0;
-    //@ close nodes(new_node, node_list_el(value, 0, values), count + 1);
-    s->top = new_node;
-    if(s->count == INT_MAX) {
-        error("ERROR: stack overflow");
-    }
-    s->count += 1;
-    //@ close stack(s, node_list_el(value, 0, values), count + 1);
-}
+// /*@
+//     predicate stack(struct stack *stack, node_list values, int count) = 
+//         malloc_block_stack(stack)
+//             &*& stack->top |-> ?top
+//             &*& stack->count |-> count
+//             &*& 0 <= count
+//             &*& nodes(top, values, count);
+// @*/
+// struct stack {
+//     struct node *top;
+//     int count;
+// };
+// 
+// struct stack *create_stack()
+//     //@ requires true;
+//     //@ ensures stack(result, empty_node_list, 0);
+// {
+//     int i;
+//     struct stack *s = malloc(sizeof(struct stack));
+//     if(s == 0) {
+//         error("ERROR: insufficient memory");
+//     }
+//     s->top = 0;
+//     s->count = 0;
+//     //@ close nodes(s->top, empty_node_list, 0);
+//     //@ close stack(s, empty_node_list, 0);
+//     return s;
+// }
+// 
+// void stack_dispose(struct stack *s)
+//     //@ requires stack(s, empty_node_list, 0);
+//     //@ ensures true;
+// {
+//     //@ open stack(s, empty_node_list, 0);
+//     //@ open nodes(s->top, empty_node_list, 0);
+//     free(s);
+// }
+// 
+// void stack_push(struct stack *s, int value)
+//     //@ requires stack(s, ?values, ?count);
+//     //@ ensures stack(s, node_list_el(value, 0, values), count + 1);
+// {
+//     //@ open stack(s, values, count);
+//     struct node *new_node = malloc(sizeof(struct node));
+//     if(new_node == 0) {
+//         error("ERROR: insufficient memory");
+//     }
+//     new_node->next = s->top;
+//     new_node->value = value;
+//     new_node->thread = 0;
+//     //@ close nodes(new_node, node_list_el(value, 0, values), count + 1);
+//     s->top = new_node;
+//     if(s->count == INT_MAX) {
+//         error("ERROR: stack overflow");
+//     }
+//     s->count += 1;
+//     //@ close stack(s, node_list_el(value, 0, values), count + 1);
+// }
 
 // int stack_pop(struct stack *s)
 //     //@ requires stack(s, node_list_el(?value, ?thread, ?tail), ?count);
@@ -731,40 +729,40 @@ void stack_push(struct stack *s, int value)
 //     return res;
 // }
 
-int stack_count(struct stack *s)
-    //@ requires stack(s, ?values, ?count);
-    //@ ensures stack(s, values, count) &*& result == count;
-{
-    //@ open stack(s, values, count);
-    return s->count;
-    //@ close stack(s, values, count);
-}
-
-int stack_get(struct stack *s, int index_from_bottom)
-    //@ requires stack(s, ?values, ?count);
-    //@ ensures stack(s, values, count);
-{
-    //@ open stack(s, values, count);
-    struct node *n;
-    if(s->count <= index_from_bottom) {
-        error("ERROR: bad stack index");
-    }
-    n = node_at(s->top, s->count - index_from_bottom - 1);
-    return node_get_value(n);
-    //@ close stack(s, values, count);
-}
-
-void stack_set(struct stack *s, int index_from_bottom, int value)
-    //@ requires stack(s, ?values, ?count);
-    //@ ensures stack(s, values, count);
-{
-    struct node *n;
-    if(s->count <= index_from_bottom) {
-        error("ERROR: bad stack index");
-    }
-    n = node_at(s->top, s->count - index_from_bottom - 1);
-    node_set_value(n, value);
-}
+// int stack_count(struct stack *s)
+//     //@ requires stack(s, ?values, ?count);
+//     //@ ensures stack(s, values, count) &*& result == count;
+// {
+//     //@ open stack(s, values, count);
+//     return s->count;
+//     //@ close stack(s, values, count);
+// }
+// 
+// int stack_get(struct stack *s, int index_from_bottom)
+//     //@ requires stack(s, ?values, ?count);
+//     //@ ensures stack(s, values, count);
+// {
+//     //@ open stack(s, values, count);
+//     struct node *n;
+//     if(s->count <= index_from_bottom) {
+//         error("ERROR: bad stack index");
+//     }
+//     n = node_at(s->top, s->count - index_from_bottom - 1);
+//     return node_get_value(n);
+//     //@ close stack(s, values, count);
+// }
+// 
+// void stack_set(struct stack *s, int index_from_bottom, int value)
+//     //@ requires stack(s, ?values, ?count);
+//     //@ ensures stack(s, values, count);
+// {
+//     struct node *n;
+//     if(s->count <= index_from_bottom) {
+//         error("ERROR: bad stack index");
+//     }
+//     n = node_at(s->top, s->count - index_from_bottom - 1);
+//     node_set_value(n, value);
+// }
 
 // void execute_code(struct class_file *class_file, struct stack *s, char *code, int code_length, int max_locals, int args_size);
 //     //@ requires true;
@@ -809,66 +807,66 @@ void stack_set(struct stack *s, int index_from_bottom, int value)
 //     n->thread = thread;
 // }
 
-bool chars_equals(char *c, int clength, char *string)
-    //@ requires true;
-    //@ ensures true;
-{
-    int res;
-    int string_length = strlen(string);
-    if(string_length != clength) return false;
-    res = memcmp(c, string, clength);
-    return res == 0;
-}
-
-void parse_method_type(char *descriptor, int dlength, int *args_size)
-    //@ requires true;
-    //@ ensures true;
-{
-    struct chars_reader *reader = create_chars_reader(descriptor, dlength);
-    char c = reader_next_int8(reader);
-    bool closingparen = false;
-    int arg_count = 0;
-    if(c != '(')
-        error("Expected (");
-    while(! closingparen)
-    {
-        c = reader_next_int8(reader);
-        switch(c) {
-        case 'I':
-            if(arg_count == INT_MAX) {
-                error("ERROR: arithmetic overflow");
-            }
-            arg_count++;
-            break;
-        case ')':
-            closingparen = true;
-            break;
-        default:
-            error("Expected ) or I");
-        }
-    }
-    c = reader_next_int8(reader);
-    if( c != 'I')
-        error("Expected I");
-    *args_size = arg_count;
-    reader_dispose(reader);
-}
-
-bool chars_starts_with(char *c, int clength, char *string)
-    //@ requires true;
-    //@ ensures true;
-{
-    int string_length = strlen(string);
-    if(string_length == 0) {
-        return true;
-    } else {
-        if(0 < clength && *c == *string) {
-            return chars_starts_with(c + 1, clength - 1, string + 1);
-        } else {
-            return false;
-        }
-    }
-}
+// bool chars_equals(char *c, int clength, char *string)
+//     //@ requires true;
+//     //@ ensures true;
+// {
+//     int res;
+//     int string_length = strlen(string);
+//     if(string_length != clength) return false;
+//     res = memcmp(c, string, clength);
+//     return res == 0;
+// }
+// 
+// void parse_method_type(char *descriptor, int dlength, int *args_size)
+//     //@ requires true;
+//     //@ ensures true;
+// {
+//     struct chars_reader *reader = create_chars_reader(descriptor, dlength);
+//     char c = reader_next_int8(reader);
+//     bool closingparen = false;
+//     int arg_count = 0;
+//     if(c != '(')
+//         error("Expected (");
+//     while(! closingparen)
+//     {
+//         c = reader_next_int8(reader);
+//         switch(c) {
+//         case 'I':
+//             if(arg_count == INT_MAX) {
+//                 error("ERROR: arithmetic overflow");
+//             }
+//             arg_count++;
+//             break;
+//         case ')':
+//             closingparen = true;
+//             break;
+//         default:
+//             error("Expected ) or I");
+//         }
+//     }
+//     c = reader_next_int8(reader);
+//     if( c != 'I')
+//         error("Expected I");
+//     *args_size = arg_count;
+//     reader_dispose(reader);
+// }
+// 
+// bool chars_starts_with(char *c, int clength, char *string)
+//     //@ requires true;
+//     //@ ensures true;
+// {
+//     int string_length = strlen(string);
+//     if(string_length == 0) {
+//         return true;
+//     } else {
+//         if(0 < clength && *c == *string) {
+//             return chars_starts_with(c + 1, clength - 1, string + 1);
+//         } else {
+//             return false;
+//         }
+//     }
+// }
 
 // void execute_code(struct class_file *class_file, struct stack *s, char *code, int code_length, int max_locals, int args_size)
 //     //@ requires true;
