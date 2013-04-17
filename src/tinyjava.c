@@ -7,9 +7,52 @@
 #include "string.h"
 #include "util.h"
 
+/*
+    Documentation: General Purpose BUILT-IN fixpoints/lemmas
+
+    inductive list<t> = nil | cons(t, list<t>);
+
+    fixpoint int list_size(list<t> list) {
+        switch (list) {
+            case nil: return 0;
+            case cons(head, tail): return 1 + size(tail);
+        }
+    }
+
+    fixpoint list<t> append<t>(list<t> xs, list<t> ys) { 
+        switch (xs) {
+            case nil: return ys;
+            case cons(x, xs0): return cons<t>(x, append<t>(xs0, ys)); }
+        }
+    
+    lemma void append_nil<t>(list<t> xs) 
+        requires true;
+        ensures append<t>(xs, nil<t>) == xs;
+    {
+        switch (xs) {
+            case nil:
+            case cons(x, xs0): append_nil<t>(xs0);
+        }
+    }
+
+    fixpoint t head(list<t> list) {
+        switch (list) {
+            case nil: return 0;
+            case cons(head, tail): return head;
+        }
+    }
+
+    fixpoint t tail(list<t> list) {
+        switch (list) {
+            case nil: return 0;
+            case cons(head, tail): return tail;
+        }
+    }
+*/
+
 void error(char *msg)
-//@ requires [?f]string(msg, ?cs);
-//@ ensures false;
+    //@ requires [?f]string(msg, ?cs);
+    //@ ensures false;
 {
     puts(msg);
     abort();
@@ -18,17 +61,16 @@ void error(char *msg)
 enum CONSTANT_TYPE { STRING = 1, INT = 3, CLASS = 7, METHODREF = 10, NAME_AND_TYPE = 12 };
 
 /*@
-    predicate constant(struct constant *constant, int tag, void *info, struct constant *next) =
-        malloc_block_constant(constant)
-            &*& constant->tag |-> tag
-            &*& constant->info |-> info
-            &*& const_info(info, tag)
-            &*& constant->next |-> next;
-    predicate constants(struct constant *constant, int count) =
+    predicate constants(struct constant *constant, list<void *> values) =
         constant == 0 ?
-            count == 0 :
-                constant(constant, ?tag, ?info, ?next)
-                    &*& constants(next, count - 1);
+            values == nil<void *> :
+                malloc_block_constant(constant)
+                    &*& constant->tag |-> ?tag
+                    &*& constant->info |-> ?info
+                    &*& constant->next |-> ?next
+                    &*& const_info(info, tag)
+                    &*& constants(next, ?tail)
+                    &*& values == cons<void *>(constant, tail);
 @*/
 struct constant {
     int tag;
@@ -39,11 +81,11 @@ struct constant {
 /*@
     predicate const_info(void *info, int tag) =
         info != 0
-            &*& (tag == 1 ?
+            &*& (tag == STRING ?
                 string_constant(info, _, _) :
-                    (tag == 3 ? int_constant(info, _) :
-                        (tag == 7 ? class_constant(info, _) :
-                            (tag == 10 ? methodref_constant(info, _, _) :
+                    (tag == INT ? int_constant(info, _) :
+                        (tag == CLASS ? class_constant(info, _) :
+                            (tag == METHODREF ? methodref_constant(info, _, _) :
                                 nat_constant(info, _, _)))));
     predicate string_constant(struct string_constant *c, unsigned short length, char* string) =
         malloc_block_string_constant(c)
@@ -99,27 +141,38 @@ struct name_and_type_constant {
 
 
 // struct constant* constants_reverse(struct constant* c)
-//     //@ requires constants(c);
-//     //@ ensures constants()
+//     //@ requires constants(c, ?values);
+//     //@ ensures constants(c, reverse<void *>(values)) &*& result == c;
 // {
 //     struct constant* res = 0;
 //     struct constant* curr = c;
+//     //@ close constants(res, nil<void *>);
+//     //@ append_nil<void *>(reverse<void *>(values));
 //     while(curr != 0)
+//         /*@ 
+//             invariant constants(res, ?res_values) 
+//                 &*& constants(curr, ?curr_values)
+//                 &*& reverse<void *>(values) == append<void *>(reverse<void *>(curr_values), res_values); 
+//         @*/
 //     {
+//         //@ open constants(curr, curr_values);
 //         struct constant* tmp = curr->next;
+//         //@ assert constants(tmp, ?tmp_values);
 //         curr->next = res;
 //         res = curr;
 //         curr = tmp;
+//         //@ close constants(res, cons<void *>(head(curr_values), res_values));
+//         //@ append_assoc<void *>(reverse<void *>(tmp_values), cons<void *>(head(curr_values), nil<void *>), res_values);
 //     }
+//     //@ close constants(curr, reverse<void *>(values));
 //     return res;
 // }
 
 void *constants_clone_info(struct constant *c, int expected_tag, int index)
-//@ requires constants(c, ?count) &*& 1 <= index &*& index < count;
-//@ ensures constants(c, count) &*& const_info(result, expected_tag);
+//@ requires constants(c, ?values) &*& 1 <= index &*& index < length(values);
+//@ ensures constants(c, values) &*& const_info(result, expected_tag);
 {
-    //@ open constants(c, count);
-    //@ open constant(c, ?tag, ?inf, ?next);
+    //@ open constants(c, values);
     if(index == 1) {
         void *res;
 
@@ -127,7 +180,7 @@ void *constants_clone_info(struct constant *c, int expected_tag, int index)
             error("ERROR: bad tag");
         }
 
-        //@ open const_info(inf, tag);
+        //@ open const_info(?inf, ?tag);
         switch(c->tag) {
             // FIXME:
             // case STRING:
@@ -204,19 +257,17 @@ void *constants_clone_info(struct constant *c, int expected_tag, int index)
         }
         //@ close const_info(res, tag);
         //@ close const_info(inf, tag);
-        //@ close constant(c, tag, inf, next);
-        //@ close constants(c, count);
+        //@ close constants(c, values);
         return res;
     } else {
         return constants_clone_info(c->next, expected_tag, index - 1);
-        //@ close constant(c, tag, inf, next);
-        //@ close constants(c, count);
+        //@ close constants(c, values);
     }
 }
 
 void *constants_clone_info_checked(struct constant *c, int expected_tag, int index, int constant_count)
-//@ requires constants(c, constant_count);
-//@ ensures constants(c, constant_count) &*& const_info(result, expected_tag);
+//@ requires constants(c, ?values) &*& 0 < index &*& index < length(values);
+//@ ensures constants(c, values) &*& const_info(result, expected_tag);
 {
     if(index < 1 || index >= constant_count)
         error("ERROR: bad index");
@@ -251,10 +302,13 @@ struct method {
     struct method *next;
 };
 
+/*@
+    predicate_family method_predicate_data(void *p)(void *data);
+@*/
+typedef bool method_predicate(struct method *method, void *data);
+    //@ requires method_predicate_data(this)(data);
+    //@ ensures method_predicate_data(this)(data);
 
-// typedef bool method_predicate(struct method* method, void *data);
-//
-//
 // bool has_name(struct method* method, void* data)
 // {
 //     char* string = (char*) data;
@@ -268,13 +322,21 @@ struct method {
 //     }
 //     return res;
 // }
-//
-//
-// bool has_name_index(struct method* method, void* name_index)
+
+
+// /*@
+//     predicate_family_instance method_predicate_data(has_name_index)(void *data) = 
+//         method_name_index(data, _);
+// @*/
+// bool has_name_index(struct method *method, void *name_index) //@ : method_predicate
+//     //@ requires method(method, ?m_name, ?m_name_length, ?m_name_index, ?m_max_locals, ?m_max_stack, ?m_code, ?m_code_length, ?m_next) &*& method_predicate_data(has_name_index)(name_index);
+//     //@ ensures method(method, m_name, m_name_length, m_name_index, m_max_locals, m_max_stack, m_code, m_code_length, m_next) &*& method_predicate_data(has_name_index)(name_index) &*& result == (m_name_index == *(int *)name_index);
 // {
-//     return method->name_index == * (int*)name_index;
+//     //@ open method(method, m_name, m_name_length, m_name_index, m_max_locals, m_max_stack, m_code, m_code_length, m_next);
+//     return method->name_index == *(int *)name_index;
+//     //@ close method(method, m_name, m_name_length, m_name_index, m_max_locals, m_max_stack, m_code, m_code_length, m_next);
 // }
-//
+
 // void get_method_info(struct method* method, int count, int* max_locals, int* max_stack, char** code, int* code_length, method_predicate* p, void* data)
 // {
 //     if(count == 0) {
@@ -302,7 +364,7 @@ struct method {
         malloc_block_class_file(class_file)
             &*& class_file->constant_count |-> constant_count
             &*& class_file->constants |-> constants
-            &*& constants(constants, constant_count)
+            &*& constants(constants, ?values)
             &*& class_file->field_count |-> field_count
             &*& class_file->method_count |-> method_count
             &*& class_file->methods |-> methods
@@ -429,8 +491,10 @@ struct class_file {
 //     class_file->constant_count = constant_count;
 //     class_file->constants = constants;
 // }
-//
+// 
 // int parse_attributes(struct chars_reader* reader)
+//     //@ requires chars_reader(reader, ?buffer, ?size, ?f);
+//     //@ ensures chars_reader(reader, buffer, size, f);
 // {
 //     int i;
 //     unsigned short attributes_count = reader_next_uint16(reader);
@@ -538,18 +602,17 @@ struct class_file {
 
 /*@
     predicate node(struct node *node, int value, struct thread *thread, struct node *next) =
-        malloc_block_node(node)
-            &*& node->value |-> value
-            &*& node->thread |-> thread
-            &*& (thread != 0 ? thread(thread, ?thread_run, ?data, ?info) : thread == 0)
-
-            &*& node->next |-> next;
-    predicate nodes(struct node *node, int count) =
+            malloc_block_node(node)
+                &*& node->value |-> value
+                &*& node->thread |-> thread
+                &*& (thread != 0 ? thread(thread, ?thread_run, ?data, ?info) : thread == 0)
+                &*& node->next |-> next;
+    predicate nodes(struct node *node, list<void *> values) =
         node == 0 ?
-            count == 0 :
+            values == nil<void *> :
                 node(node, ?value, ?thread, ?next)
-                    &*& 0 < count
-                    &*& nodes(next, count - 1);
+                    &*& nodes(next, ?tail)
+                    &*& values == cons<void *>(node, tail);
 @*/
 struct node {
     int value;
@@ -558,8 +621,8 @@ struct node {
 };
 
 int node_get_value(struct node *n)
-//@ requires node(n, ?value, ?thread, ?next);
-//@ ensures node(n, value, thread, next) &*& result == value;
+    //@ requires node(n, ?value, ?thread, ?next);
+    //@ ensures node(n, value, thread, next) &*& result == value;
 {
     //@ open node(n, value, thread, next);
     // if(n->thread != 0) {
@@ -571,8 +634,8 @@ int node_get_value(struct node *n)
 }
 
 void node_set_value(struct node *n, int value)
-//@ requires node(n, _, ?thread, ?next);
-//@ ensures node(n, value, thread, next);
+    //@ requires node(n, _, ?thread, ?next);
+    //@ ensures node(n, value, thread, next);
 {
     //@ open node(n, _, thread, next);
     // if(n->thread != 0) {
@@ -583,24 +646,30 @@ void node_set_value(struct node *n, int value)
     //@ close node(n, value, thread, next);
 }
 
-// Use lseg for this?
+
 // struct node *node_at(struct node *n, int index)
+//     //@ requires nodes(n, ?values) &*& index >= 0 &*& index < length(values) ;
+//     //@ ensures nodes(n, values) &*& result == nth(index, values);
 // {
 //     if(index == 0) {
 //         return n;
 //     } else {
+//         //@ open nodes(n, values);
+//         //@ open node(n, ?value, ?thread, ?next);
 //         struct node *res = node_at(n->next, index - 1);
+//         //@ close node(n, value, thread, next);
+//         //@ close nodes(n, values);
 //         return res;
 //     }
 // }
 
 /*@
-    predicate stack(struct stack *stack, int count) =
+    predicate stack(struct stack *stack, list<void *> values) =
         malloc_block_stack(stack)
             &*& stack->top |-> ?top
-            &*& stack->count |-> count
-            &*& 0 <= count
-            &*& nodes(top, count);
+            &*& stack->count |-> ?count
+            &*& count == length(values)
+            &*& nodes(top, values);
 @*/
 struct stack {
     struct node *top;
@@ -609,7 +678,7 @@ struct stack {
 
 struct stack *create_stack()
 //@ requires true;
-//@ ensures stack(result, 0);
+//@ ensures stack(result, nil<void *>);
 {
     int i;
     struct stack *s = malloc(sizeof(struct stack));
@@ -618,64 +687,72 @@ struct stack *create_stack()
     }
     s->top = 0;
     s->count = 0;
-    //@ close nodes(s->top, 0);
-    //@ close stack(s, 0);
+    //@ close nodes(0, nil<void *>);
+    //@ close stack(s, nil<void *>);
     return s;
 }
 
 void stack_dispose(struct stack *s)
-//@ requires stack(s, 0);
+//@ requires stack(s, nil<void *>);
 //@ ensures true;
 {
-    //@ open stack(s, 0);
+    //@ open stack(s, nil<void *>);
     //@ open nodes(_, _);
     free(s);
 }
 
-void stack_push(struct stack *s, int value)
-//@ requires stack(s, ?count);
-//@ ensures stack(s, count + 1);
-{
-    //@ open stack(s, count);
-    struct node *new_node = malloc(sizeof(struct node));
-    if(new_node == 0) {
-        error("ERROR: insufficient memory");
-    }
-    new_node->next = s->top;
-    new_node->value = value;
-    new_node->thread = 0;
-    //@ close node(new_node, value, 0, s->top);
-    s->top = new_node;
-    if(s->count == INT_MAX) {
-        error("ERROR: stack overflow");
-    }
-    s->count += 1;
-    //@ close nodes(s->top, count + 1);
-    //@ close stack(s, count + 1);
-}
+// void stack_push(struct stack *s, int value)
+//     //@ requires stack(s, ?values);
+//     //@ ensures stack(s, cons<void *>(n, values));
+// {
+//     //@ open stack(s, values);
+//     struct node *new_node = malloc(sizeof(struct node));
+//     if(new_node == 0) {
+//         error("ERROR: insufficient memory");
+//     }
+//     new_node->next = s->top;
+//     new_node->value = value;
+//     new_node->thread = 0;
+//     //@ close node(new_node, value, 0, s->top);
+//     s->top = new_node;
+//     if(s->count == INT_MAX) {
+//         error("ERROR: stack overflow");
+//     }
+//     s->count += 1;
+//     //@ close nodes(new_node, cons<void *>(new_node, values));
+//     //@ close stack(s, cons<void *>(new_node, values));
+// }
 
 // int stack_pop(struct stack* s)
+//     //@ requires stack(s, ?values) &*& length(values) != 0;
+//     //@ ensures stack(s, tail(values));
 // {
+//     //@ open stack(s, values);
 //     struct node* n;
 //     int res;
 //     if(s->count == 0) {
 //         error("ERROR: stack underflow");
 //     }
 //     n = s->top;
+//     //@ open nodes(n, values);
+//     //@ open node(n, ?value, ?thread, ?next);
 //     s->top = s->top->next;
+//     //@ close node(n, value, thread, next);
 //     s->count--;
 //     res = node_get_value(n);
+//     //@ open node(n, value, thread, next);
 //     free(n);
+//     //@ close stack(s, tail(values));
 //     return res;
 // }
 
 int stack_count(struct stack *s)
-//@ requires stack(s, ?count);
-//@ ensures stack(s, count) &*& result == count;
+//@ requires stack(s, ?values);
+//@ ensures stack(s, values) &*& result == length(values);
 {
-    //@ open stack(s, count);
+    //@ open stack(s, values);
     return s->count;
-    //@ close stack(s, count);
+    //@ close stack(s, values);
 }
 
 // int stack_get(struct stack* s, int index_from_bottom)
@@ -712,7 +789,7 @@ int stack_count(struct stack *s)
             &*& new_thread_info->max_locals |-> max_locals
             &*& new_thread_info->args_size |-> args_size
             &*& new_thread_info->node |-> node
-            &*& node(node, ?value, ?thread, ?next);
+            &*& nodes(node, ?values);
 @*/
 struct new_thread_info {
     struct class_file *class_file;
@@ -766,7 +843,7 @@ struct new_thread_info {
 //     int arg_count = 0;
 //     if(c != '(')
 //         error("Expected (");
-//     while(! closingparen)
+//     while(!closingparen)
 //     {
 //         c = reader_next_int8(reader);
 //         switch(c) {
