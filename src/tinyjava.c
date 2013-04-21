@@ -7,49 +7,6 @@
 #include "string.h"
 #include "util.h"
 
-/*
-    Documentation: General Purpose BUILT-IN fixpoints/lemmas
-
-    inductive list<t> = nil | cons(t, list<t>);
-
-    fixpoint int list_size(list<t> list) {
-        switch (list) {
-            case nil: return 0;
-            case cons(head, tail): return 1 + size(tail);
-        }
-    }
-
-    fixpoint list<t> append<t>(list<t> xs, list<t> ys) { 
-        switch (xs) {
-            case nil: return ys;
-            case cons(x, xs0): return cons<t>(x, append<t>(xs0, ys)); }
-        }
-    
-    lemma void append_nil<t>(list<t> xs) 
-        requires true;
-        ensures append<t>(xs, nil<t>) == xs;
-    {
-        switch (xs) {
-            case nil:
-            case cons(x, xs0): append_nil<t>(xs0);
-        }
-    }
-
-    fixpoint t head(list<t> list) {
-        switch (list) {
-            case nil: return 0;
-            case cons(head, tail): return head;
-        }
-    }
-
-    fixpoint t tail(list<t> list) {
-        switch (list) {
-            case nil: return 0;
-            case cons(head, tail): return tail;
-        }
-    }
-*/
-
 void error(char *msg)
     //@ requires [?f]string(msg, ?cs);
     //@ ensures false;
@@ -92,7 +49,7 @@ struct constant {
             &*& c->length |-> length
             &*& length >= 0
             &*& c->string |-> string
-            &*& chars(string, length, _);
+            &*& string(string, ?cs);
 @*/
 struct string_constant {
     unsigned short length;
@@ -140,33 +97,33 @@ struct name_and_type_constant {
 };
 
 
-// struct constant* constants_reverse(struct constant* c)
-//     //@ requires constants(c, ?values);
-//     //@ ensures constants(c, reverse<void *>(values)) &*& result == c;
-// {
-//     struct constant* res = 0;
-//     struct constant* curr = c;
-//     //@ close constants(res, nil<void *>);
-//     //@ append_nil<void *>(reverse<void *>(values));
-//     while(curr != 0)
-//         /*@ 
-//             invariant constants(res, ?res_values) 
-//                 &*& constants(curr, ?curr_values)
-//                 &*& reverse<void *>(values) == append<void *>(reverse<void *>(curr_values), res_values); 
-//         @*/
-//     {
-//         //@ open constants(curr, curr_values);
-//         struct constant* tmp = curr->next;
-//         //@ assert constants(tmp, ?tmp_values);
-//         curr->next = res;
-//         res = curr;
-//         curr = tmp;
-//         //@ close constants(res, cons<void *>(head(curr_values), res_values));
-//         //@ append_assoc<void *>(reverse<void *>(tmp_values), cons<void *>(head(curr_values), nil<void *>), res_values);
-//     }
-//     //@ close constants(curr, reverse<void *>(values));
-//     return res;
-// }
+struct constant* constants_reverse(struct constant* c)
+    //@ requires constants(c, ?values);
+    //@ ensures constants(result, reverse<void *>(values));
+{
+    struct constant* res = 0;
+    struct constant* curr = c;
+    //@ close constants(res, nil<void *>);
+    //@ append_nil<void *>(reverse<void *>(values));
+    while(curr != 0)
+        /*@ 
+            invariant constants(res, ?res_values) 
+                &*& constants(curr, ?curr_values)
+                &*& reverse<void *>(values) == append<void *>(reverse<void *>(curr_values), res_values); 
+        @*/
+    {
+        //@ open constants(curr, curr_values);
+        struct constant* tmp = curr->next;
+        //@ assert constants(tmp, ?tmp_values);
+        curr->next = res;
+        res = curr;
+        curr = tmp;
+        //@ close constants(res, cons<void *>(head(curr_values), res_values));
+        //@ append_assoc<void *>(reverse<void *>(tmp_values), cons<void *>(head(curr_values), nil<void *>), res_values);
+    }
+    //@ open constants(curr, _);
+    return res;
+}
 
 void *constants_clone_info(struct constant *c, int expected_tag, int index)
 //@ requires constants(c, ?values) &*& 1 <= index &*& index < length(values);
@@ -388,6 +345,7 @@ struct class_file {
 //         error("ERROR: constant count must be at least one");
 //     constants = 0;
 //     for(i = 1; i < constant_count; i++)
+//         //@ invariant chars_reader(reader,_,_,_) &*& 1 <= i &*& i <= constant_count;
 //     {
 //         unsigned char tag;
 //         struct constant* constant = malloc(sizeof(struct constant));
@@ -607,12 +565,12 @@ struct class_file {
                 &*& node->thread |-> thread
                 &*& (thread != 0 ? thread(thread, ?thread_run, ?data, ?info) : thread == 0)
                 &*& node->next |-> next;
-    predicate nodes(struct node *node, list<void *> values) =
+    predicate nodes(struct node *node, list<int> values) =
         node == 0 ?
-            values == nil<void *> :
+            values == nil<int> :
                 node(node, ?value, ?thread, ?next)
                     &*& nodes(next, ?tail)
-                    &*& values == cons<void *>(node, tail);
+                    &*& values == cons<int>(value, tail);
 @*/
 struct node {
     int value;
@@ -646,10 +604,39 @@ void node_set_value(struct node *n, int value)
     //@ close node(n, value, thread, next);
 }
 
-
+// @
+//     predicate lseg(struct node *first, struct node *last, list<void *> values) =
+//         first == last ?
+//             values == cons<void *>(first, nil<void *>) :
+//                 node(first, ?value, ?thread, ?next)
+//                     &*& lseg(next, last, ?tail)
+//                     &*& values == cons<void *>(next, tail);
+// 
+//     lemma void nodes_to_lseg_lemma(struct node *first)
+//         requires nodes(first, ?values);
+//         ensures lseg(first, 0, values);
+//     {
+//         open nodes(first, values);
+//         if (first != 0) {
+//             nodes_to_lseg_lemma(first->next);
+//         }
+//         close lseg(first, 0, values);
+//     }
+// 
+//     lemma void lseg_to_nodes_lemma(struct node *first)
+//         requires lseg(first, 0, ?values);
+//         ensures nodes(first, values);
+//     {
+//         open lseg(first, 0, values);
+//         if (first != 0) {
+//             lseg_to_nodes_lemma(first->next);
+//         }
+//         close nodes(first, values);
+//     }
+// @
 // struct node *node_at(struct node *n, int index)
-//     //@ requires nodes(n, ?values) &*& index >= 0 &*& index < length(values) ;
-//     //@ ensures nodes(n, values) &*& result == nth(index, values);
+//     //@ requires nodes(n, ?values) &*& index >= 0 &*& index < length(values) &*& length(values) > 0;
+//     //@ ensures lseg(n, result, index) &*& lseg(result, 0, length(values) - index);
 // {
 //     if(index == 0) {
 //         return n;
@@ -664,7 +651,7 @@ void node_set_value(struct node *n, int value)
 // }
 
 /*@
-    predicate stack(struct stack *stack, list<void *> values) =
+    predicate stack(struct stack *stack, list<int> values) =
         malloc_block_stack(stack)
             &*& stack->top |-> ?top
             &*& stack->count |-> ?count
@@ -677,8 +664,8 @@ struct stack {
 };
 
 struct stack *create_stack()
-//@ requires true;
-//@ ensures stack(result, nil<void *>);
+    //@ requires true;
+    //@ ensures stack(result, nil<int>);
 {
     int i;
     struct stack *s = malloc(sizeof(struct stack));
@@ -687,45 +674,45 @@ struct stack *create_stack()
     }
     s->top = 0;
     s->count = 0;
-    //@ close nodes(0, nil<void *>);
-    //@ close stack(s, nil<void *>);
+    //@ close nodes(0, nil<int>);
+    //@ close stack(s, nil<int>);
     return s;
 }
 
 void stack_dispose(struct stack *s)
-//@ requires stack(s, nil<void *>);
-//@ ensures true;
+    //@ requires stack(s, nil<int>);
+    //@ ensures true;
 {
-    //@ open stack(s, nil<void *>);
+    //@ open stack(s, nil<int>);
     //@ open nodes(_, _);
     free(s);
 }
 
-// void stack_push(struct stack *s, int value)
-//     //@ requires stack(s, ?values);
-//     //@ ensures stack(s, cons<void *>(n, values));
-// {
-//     //@ open stack(s, values);
-//     struct node *new_node = malloc(sizeof(struct node));
-//     if(new_node == 0) {
-//         error("ERROR: insufficient memory");
-//     }
-//     new_node->next = s->top;
-//     new_node->value = value;
-//     new_node->thread = 0;
-//     //@ close node(new_node, value, 0, s->top);
-//     s->top = new_node;
-//     if(s->count == INT_MAX) {
-//         error("ERROR: stack overflow");
-//     }
-//     s->count += 1;
-//     //@ close nodes(new_node, cons<void *>(new_node, values));
-//     //@ close stack(s, cons<void *>(new_node, values));
-// }
+void stack_push(struct stack *s, int value)
+    //@ requires stack(s, ?values);
+    //@ ensures stack(s, cons<int>(value, values));
+{
+    //@ open stack(s, values);
+    struct node *new_node = malloc(sizeof(struct node));
+    if(new_node == 0) {
+        error("ERROR: insufficient memory");
+    }
+    new_node->next = s->top;
+    new_node->value = value;
+    new_node->thread = 0;
+    //@ close node(new_node, value, 0, s->top);
+    s->top = new_node;
+    if(s->count == INT_MAX) {
+        error("ERROR: stack overflow");
+    }
+    s->count += 1;
+    //@ close nodes(new_node, cons<int>(value, values));
+    //@ close stack(s, cons<int>(value, values));
+}
 
 // int stack_pop(struct stack* s)
 //     //@ requires stack(s, ?values) &*& length(values) != 0;
-//     //@ ensures stack(s, tail(values));
+//     //@ ensures stack(s, tail(values)) &*& result == head(values);
 // {
 //     //@ open stack(s, values);
 //     struct node* n;
@@ -756,25 +743,33 @@ int stack_count(struct stack *s)
 }
 
 // int stack_get(struct stack* s, int index_from_bottom)
+//     //@ requires stack(s, ?values) &*& length(values) != 0 &*& index_from_bottom < length(values);
+//     //@ ensures stack(s, values) &*& result == nth(length(values) - index_from_bottom, values);
 // {
 //     struct node* n;
+//     //@ open stack(s, values);
 //     if(s->count <= index_from_bottom) {
 //         error("ERROR: bad stack index");
 //     }
 //     n = node_at(s->top, s->count - index_from_bottom - 1);
+//     //@ close stack(s, values);
 //     return node_get_value(n);
 // }
-//
+// 
 // void stack_set(struct stack* s, int index_from_bottom, int value)
+//     //@ requires stack(s, ?values) &*& length(values) != 0 &*& index_from_bottom < length(values);
+//     //@ ensures stack(s, values) &*& value == nth(length(values) - index_from_bottom, values);
 // {
 //     struct node* n;
+//     //@ open stack(s, values);
 //     if(s->count <= index_from_bottom) {
 //         error("ERROR: bad stack index");
 //     }
 //     n = node_at(s->top, s->count - index_from_bottom - 1);
+//     //@ close stack(s, values);
 //     node_set_value(n, value);
 // }
-//
+
 // void execute_code(struct class_file* class_file, struct stack* s, char* code, int code_length, int max_locals, int args_size);
 
 // TODO: check declaration, not sure whether right...
@@ -825,16 +820,20 @@ struct new_thread_info {
 //     thread = thread_start_joinable(execute_thread, info);
 //     n->thread = thread;
 // }
-//
+
 // bool chars_equals(char* c, int clength, char* string)
+//     //@ requires chars(c, clength, ?cs) &*& string(string, ?string_cs);
+//     //@ ensures chars(c, clength, cs) &*& string(string, string_cs) &*& result == (cs == string_cs);
 // {
 //     int res;
 //     int string_length = strlen(string);
 //     if(string_length != clength) return false;
+//     //@ string_to_chars(string);
 //     res = memcmp(c, string, clength);
+//     //@ chars_to_string(string);
 //     return res == 0;
 // }
-//
+
 // void parse_method_type(char* descriptor, int dlength, int* args_size)
 // {
 //     struct chars_reader* reader = create_chars_reader(descriptor, dlength);
