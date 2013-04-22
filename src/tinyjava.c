@@ -337,120 +337,127 @@ struct class_file {
     struct method *methods;
 };
 
-// void parse_constant_pool(struct chars_reader *reader, struct class_file *class_file)
-// {
-//     struct constant *constants;
-//     int i;
-//     unsigned short constant_count = 0;
-//     constant_count = reader_next_uint16(reader);
-//     if(constant_count < (unsigned short) 1)
-//         error("ERROR: constant count must be at least one");
-//     constants = 0;
-//     for(i = 1; i < constant_count; i++)
-//         //@ invariant chars_reader(reader,_,_,_) &*& 1 <= i &*& i <= constant_count;
-//     {
-//         unsigned char tag;
-//         struct constant* constant = malloc(sizeof(struct constant));
-//         if(constant == 0) {
-//             error("ERROR: insufficient memory");
-//         }
-//         tag = reader_next_uint8(reader);
-//         constant->tag = tag;
-//         switch((int) tag) {
-//         case STRING:
-//         {
-//             unsigned short length;
-//             char* string;
-//             struct string_constant* string_constant = malloc(sizeof(struct string_constant));
-//             if(string_constant == 0) {
-//                 error("ERROR: insufficient memory");
-//             }
-//             length = reader_next_uint16(reader);
-//             string_constant->length = length;
-//             string = reader_next_chars(reader, length);
-//             string_constant->string = string;
-//             constant->info = string_constant;
-//             break;
-//         }
-//         case INT:
-//         {
-//             int value;
-//             struct int_constant* int_constant = malloc(sizeof(struct int_constant));
-//             if(int_constant == 0) {
-//                 error("ERROR: insufficient memory");
-//             }
-//             value = reader_next_int32(reader);
-//             int_constant->value = value;
-//             constant->info = int_constant;
-//             break;
-//         }
-//         case CLASS:
-//         {
-//             unsigned short name_index;
-//             struct class_constant* class_constant = malloc(sizeof(struct class_constant));
-//             if(class_constant == 0) {
-//                 error("ERROR: insufficient memory");
-//             }
-//             name_index = reader_next_uint16(reader);
-//             class_constant->name_index = name_index;
-//             if(name_index < 1 || name_index >= constant_count) {
-//                 error("ERROR: bad index");
-//             }
-//             constant->info = class_constant;
-//             break;
-//         }
-//         case METHODREF:
-//         {
-//             unsigned short class_index;
-//             unsigned short name_and_type_index;
-//             struct methodref_constant* methodref_constant = malloc(sizeof(struct methodref_constant));
-//             if(methodref_constant == 0) {
-//                 error("ERROR: insufficient memory");
-//             }
-//             class_index = reader_next_uint16(reader);
-//             methodref_constant->class_index = class_index;
-//             if(class_index < 1 ||  class_index >= constant_count) {
-//                 error("ERROR: bad index");
-//             }
-//             name_and_type_index = reader_next_uint16(reader);
-//             if(name_and_type_index < 1 ||  name_and_type_index >= constant_count) {
-//                 error("ERROR: bad index");
-//             }
-//             methodref_constant->name_and_type_index = name_and_type_index;
-//             constant->info = methodref_constant;
-//             break;
-//         }
-//         case NAME_AND_TYPE:
-//         {
-//             unsigned short name_index;
-//             unsigned short descriptor_index;
-//             struct name_and_type_constant* name_and_type_constant = malloc(sizeof(struct name_and_type_constant));
-//             if(name_and_type_constant == 0) {
-//                 error("ERROR: insufficient memory");
-//             }
-//             name_index = reader_next_uint16(reader);
-//             if(name_index < 1 ||  name_index >= constant_count) {
-//                 error("ERROR: bad index");
-//             }
-//             name_and_type_constant->name_index = name_index;
-//             descriptor_index = reader_next_uint16(reader);
-//             if(descriptor_index < 1 ||  descriptor_index >= constant_count) {
-//                 error("ERROR: bad index");
-//             }
-//             name_and_type_constant->descriptor_index = descriptor_index;
-//             constant->info = name_and_type_constant;
-//             break;
-//         }
-//         default:
-//             error("Unsupported constant pool tag");
-//         }
-//         constant->next = constants;
-//         constants = constant;
-//     }
-//     constants = constants_reverse(constants);
-//     class_file->constant_count = constant_count;
-//     class_file->constants = constants;
-// }
+void parse_constant_pool(struct chars_reader* reader, struct class_file* class_file)
+//@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file(class_file, ?cf_constant_count, ?cf_constants, ?field_count, ?method_count, ?methods);
+//@ ensures chars_reader(reader,buffer,size,f) &*& class_file(class_file, cf_constant_count, cf_constants, field_count, method_count, methods);
+{
+  struct constant* constants;
+  int i;
+  unsigned short constant_count = 0;
+  constant_count = reader_next_uint16(reader);
+  if(constant_count < (unsigned short) 1)
+    error("ERROR: constant count must be at least one");
+  constants = 0;
+  //@ close constants(0,nil<void*>);
+
+  for(i = 1; i < constant_count; i++)
+  //@ invariant chars_reader(reader,buffer,size,f) &*& 1<=i &*& i<= constant_count &*&  constants(constants, ?values) &*& length(values) == i-1;
+  {
+
+    unsigned char tag;
+
+    struct constant* constant = malloc(sizeof(struct constant));
+    if(constant == 0) {
+      error("ERROR: insufficient memory");
+    }
+    tag = reader_next_uint8(reader);
+    constant->tag = tag;
+    switch((int) tag) {
+      case STRING:
+        {
+          unsigned short length;
+          char* string;
+
+          struct string_constant* string_constant = malloc(sizeof(struct string_constant));
+          if(string_constant == 0) { error("ERROR: insufficient memory"); }
+          length = reader_next_uint16(reader);
+          string_constant->length = length;
+          string = reader_next_chars(reader, length);
+
+          string_constant->string = string;
+          constant->info = string_constant;
+          //@ close string_constant(string_constant, length, string);
+          break;
+        }
+      case INT:
+        {
+          int value;
+          struct int_constant* int_constant = malloc(sizeof(struct int_constant));
+          if(int_constant == 0) { error("ERROR: insufficient memory"); }
+          value = reader_next_int32(reader);
+          int_constant->value = value;
+          constant->info = int_constant;
+          //@ close int_constant(int_constant, value);
+          break;
+        }
+      case CLASS:
+        {
+          unsigned short name_index;
+          struct class_constant* class_constant = malloc(sizeof(struct class_constant));
+          if(class_constant == 0) { error("ERROR: insufficient memory"); }
+          name_index = reader_next_uint16(reader);
+          class_constant->name_index = name_index;
+          if(name_index < 1 || name_index >= constant_count) { error("ERROR: bad index"); }
+          constant->info = class_constant;
+          //@ close class_constant(class_constant, name_index);
+          break;
+        }
+      case METHODREF:
+        {
+          unsigned short class_index;
+          unsigned short name_and_type_index;
+          struct methodref_constant* methodref_constant = malloc(sizeof(struct methodref_constant));
+          if(methodref_constant == 0) { error("ERROR: insufficient memory"); }
+          class_index = reader_next_uint16(reader);
+          methodref_constant->class_index = class_index;
+          if(class_index < 1 ||  class_index >= constant_count) { error("ERROR: bad index"); }
+          name_and_type_index = reader_next_uint16(reader);
+          if(name_and_type_index < 1 ||  name_and_type_index >= constant_count) { error("ERROR: bad index"); }
+          methodref_constant->name_and_type_index = name_and_type_index;
+          constant->info = methodref_constant;
+          //@ close methodref_constant(methodref_constant, class_index, name_and_type_index);
+          break;
+        }
+      case NAME_AND_TYPE:
+        {
+          unsigned short name_index;
+          unsigned short descriptor_index;
+          struct name_and_type_constant* name_and_type_constant = malloc(sizeof(struct name_and_type_constant));
+          if(name_and_type_constant == 0) { error("ERROR: insufficient memory"); }
+          name_index = reader_next_uint16(reader);
+          if(name_index < 1 ||  name_index >= constant_count) { error("ERROR: bad index"); }
+          name_and_type_constant->name_index = name_index;
+          descriptor_index = reader_next_uint16(reader);
+          if(descriptor_index < 1 ||  descriptor_index >= constant_count) { error("ERROR: bad index"); }
+          name_and_type_constant->descriptor_index = descriptor_index;
+          constant->info = name_and_type_constant;
+          //@ close nat_constant(name_and_type_constant, name_index, descriptor_index);
+          break;
+        }
+      default:
+        error("Unsupported constant pool tag");
+    }
+    constant->next = constants;
+    constants = constant;
+    //constant
+    //constant info
+    //@ close const_info(constant->info,tag);
+    // open constants(constants,?tail);
+    //@ close constants(constants,cons<void*>(constant,values));
+  
+
+  }
+    //@ leak constants(constants,_);
+
+//  //@ open class_file(class_file, cf_constant_count, cf_constants, field_count, method_count, methods);
+//  //@ open constants(cf_constants,_);
+//  constants = constants_reverse(constants);
+//
+//  class_file->constant_count = constant_count;
+//  class_file->constants = constants;
+//  // assert cf_constant_count == constant_count;
+//  //@ close class_file(class_file, cf_constant_count, constants, field_count, method_count, methods);
+}
 // 
 // int parse_attributes(struct chars_reader* reader)
 //     //@ requires chars_reader(reader, ?buffer, ?size, ?f);
