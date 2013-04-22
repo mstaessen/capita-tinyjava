@@ -7,6 +7,12 @@
 #include "string.h"
 #include "util.h"
 
+/*@
+    lemma_auto(reverse(xs)) void reverse_length<t>(list<t> xs);
+        requires true;
+        ensures length(reverse(xs)) == length(xs);
+@*/
+
 void error(char *msg)
 //@ requires [?f]string(msg, ?cs);
 //@ ensures false;
@@ -97,11 +103,7 @@ struct name_and_type_constant {
     unsigned short descriptor_index;
 };
 
-/*@
-    lemma_auto(reverse(xs)) void reverse_length<t>(list<t> xs);
-        requires true;
-        ensures length(reverse(xs)) == length(xs);
-@*/
+
 struct constant *constants_reverse(struct constant *c)
 //@ requires constants(c, ?values);
 //@ ensures constants(result, reverse<void *>(values)) &*& length(values) == length(reverse(values));
@@ -324,7 +326,7 @@ typedef bool method_predicate(struct method *method, void *data);
 
 
 //             FIXME: removed from class_file_with_constants
-//             &*& constant_count == length(constant_values)
+
 /*@
     predicate empty_class_file(struct class_file *class_file) =
         malloc_block_class_file(class_file)
@@ -334,7 +336,7 @@ typedef bool method_predicate(struct method *method, void *data);
             &*& class_file->method_count |-> ?method_count
             &*& class_file->methods |-> ?methods;
 
-    predicate class_file_with_constants(struct class_file *class_file) = 
+    predicate class_file_with_constants(struct class_file *class_file) =
         malloc_block_class_file(class_file)
             &*& class_file->constant_count |-> ?constant_count
             &*& class_file->constants |-> ?constants
@@ -344,7 +346,7 @@ typedef bool method_predicate(struct method *method, void *data);
             &*& class_file->method_count |-> ?method_count
             &*& class_file->methods |-> ?methods;
 
-    predicate class_file_with_methods(struct class_file *class_file) = 
+    predicate class_file_with_methods(struct class_file *class_file) =
         malloc_block_class_file(class_file)
             &*& class_file->constant_count |-> ?constant_count
             &*& class_file->constants |-> ?constants
@@ -376,10 +378,8 @@ void parse_constant_pool(struct chars_reader *reader, struct class_file *class_f
     //@ close constants(0,nil<void*>);
 
     for(i = 1; i < constant_count; i++)
-    	//@ invariant chars_reader(reader,buffer,size,f) &*& 1<=i &*& i<= constant_count &*&  constants(constants, ?values) &*& length(values) == i-1;
-        
+        //@ invariant chars_reader(reader,buffer,size,f) &*& i >= 1 &*& i <= constant_count &*& constants(constants, ?values) &*& length(values) == i - 1;
     {
-
         unsigned char tag;
 
         struct constant *constant = malloc(sizeof(struct constant));
@@ -489,6 +489,7 @@ void parse_constant_pool(struct chars_reader *reader, struct class_file *class_f
         //@ close constants(constants,cons<void*>(constant,values));
     }
 
+
     //@ open empty_class_file(class_file);
     constants = constants_reverse(constants);
     class_file->constant_count = constant_count;
@@ -496,110 +497,110 @@ void parse_constant_pool(struct chars_reader *reader, struct class_file *class_f
     //@ close class_file_with_constants(class_file);
 }
 
- int parse_attributes(struct chars_reader* reader)
-     //@ requires chars_reader(reader, ?buffer, ?size, ?f);
-     //@ ensures chars_reader(reader, buffer, size, f);
- {
-     int i;
-     unsigned short attributes_count = reader_next_uint16(reader);
-     for(i = 0; i < attributes_count; i++)
-     //@ invariant chars_reader(reader, buffer, size, f);
-     {
-         unsigned short attribute_name_index = reader_next_uint16(reader);
-         unsigned int length = reader_next_uint32(reader);
-         if(length > (unsigned int) INT_MAX) {
-             error("ERROR: unsupported attribute length");
-         }
-         reader_skip(reader, (int) length);
-     }
-     return attributes_count;
- }
+int parse_attributes(struct chars_reader *reader)
+//@ requires chars_reader(reader, ?buffer, ?size, ?f);
+//@ ensures chars_reader(reader, buffer, size, f);
+{
+    int i;
+    unsigned short attributes_count = reader_next_uint16(reader);
+    for(i = 0; i < attributes_count; i++)
+        //@ invariant chars_reader(reader, buffer, size, f);
+    {
+        unsigned short attribute_name_index = reader_next_uint16(reader);
+        unsigned int length = reader_next_uint32(reader);
+        if(length > (unsigned int) INT_MAX) {
+            error("ERROR: unsupported attribute length");
+        }
+        reader_skip(reader, (int) length);
+    }
+    return attributes_count;
+}
 
- void parse_fields(struct chars_reader* reader, struct class_file* class_file)
- //@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file_with_constants(class_file);
- //@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_constants(class_file);
+void parse_fields(struct chars_reader *reader, struct class_file *class_file)
+//@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file_with_constants(class_file);
+//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_constants(class_file);
 
- {
-     int i;
-     unsigned short field_count = reader_next_uint16(reader);
-     //@ open class_file_with_constants(class_file);
-     class_file->field_count = field_count;
-     for(i = 0; i < field_count; i++)
-     //@ invariant chars_reader(reader,buffer,size,f) &*& i >= 0 &*& i <= field_count;
-     {
-         unsigned short access_flags = reader_next_uint16(reader);
-         unsigned short name_index = reader_next_uint16(reader);
-         unsigned short descriptor_index = reader_next_uint16(reader);
-         int attributes_count = parse_attributes(reader);
-     }
-     //@ close class_file_with_constants(class_file);
- }
+{
+    int i;
+    unsigned short field_count = reader_next_uint16(reader);
+    //@ open class_file_with_constants(class_file);
+    class_file->field_count = field_count;
+    for(i = 0; i < field_count; i++)
+        //@ invariant chars_reader(reader,buffer,size,f) &*& i >= 0 &*& i <= field_count;
+    {
+        unsigned short access_flags = reader_next_uint16(reader);
+        unsigned short name_index = reader_next_uint16(reader);
+        unsigned short descriptor_index = reader_next_uint16(reader);
+        int attributes_count = parse_attributes(reader);
+    }
+    //@ close class_file_with_constants(class_file);
+}
 
- void parse_methods(struct chars_reader* reader, struct class_file* class_file)
- //@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file_with_constants(class_file);
- //@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_methods(class_file);
- {
-     int i;
-     unsigned short method_count = reader_next_uint16(reader);
-     //@open class_file_with_constants(class_file);
-     class_file->method_count = method_count;
-     class_file->methods = 0;
-     //@close class_file_with_constants(class_file);
-     for(i = 0; i < method_count; i++)
-     //@ invariant i>= 0 &*& i<= method_count &*& class_file_with_constants(class_file) &*& chars_reader(reader,buffer,size,f);
-     {
-         unsigned short access_flags, name_index, descriptor_index, max_stack, max_locals;
-         int pre_attrib_offset, offset, code_length, code_offset, attributes_count;
-         unsigned int ucode_length;
-         char* code;
-         struct string_constant* name_constant;
-         struct method* method = malloc(sizeof(struct method));
-         if(method == 0) error("Insufficient memory");
-	//@open class_file_with_constants(class_file);
-         method->next = class_file->methods;
-         access_flags = reader_next_uint16(reader);
-         name_index = reader_next_uint16(reader);
-         method->name_index= name_index;
-         if(name_index < 1 ||  name_index >= class_file->constant_count) {
-             error("ERROR: bad index");
-         }
-   
-   	//@ open constants(_,?values);
-         //@ assert name_index >= 1 &*& name_index < length(values);
-         name_constant = constants_clone_info(class_file->constants, STRING, name_index);
-         method->name = name_constant->string;
-         method->name_length = name_constant->length;
-         free(name_constant);
-         descriptor_index = reader_next_uint16(reader);
-         pre_attrib_offset = reader_get_offset(reader);
-         reader_skip(reader, 8);
-         max_stack = reader_next_uint16(reader);
-         method->max_stack = max_stack;
-         max_locals = reader_next_uint16(reader);
-         method->max_locals = max_locals;
-         offset = reader_get_offset(reader);
-         ucode_length = reader_next_uint32(reader);
-         if(ucode_length > (unsigned int) INT_MAX) {
-             error("ERROR: code length not supported yet");
-         }
-         code_length = (int) ucode_length;
-         method->code_length = code_length;
-         code_offset = reader_get_offset(reader);
-         code = reader_next_chars(reader, code_length);
-         method->code = code;
-         reader_set_offset(reader, pre_attrib_offset);
-         attributes_count = parse_attributes(reader);
-         class_file->methods = method;
-     }
- }
+void parse_methods(struct chars_reader *reader, struct class_file *class_file)
+//@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file_with_constants(class_file);
+//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_methods(class_file);
+{
+    int i;
+    unsigned short method_count = reader_next_uint16(reader);
+    //@open class_file_with_constants(class_file);
+    class_file->method_count = method_count;
+    class_file->methods = 0;
+    //@close class_file_with_constants(class_file);
+    for(i = 0; i < method_count; i++)
+        //@ invariant i>= 0 &*& i<= method_count &*& class_file_with_constants(class_file) &*& chars_reader(reader,buffer,size,f);
+    {
+        unsigned short access_flags, name_index, descriptor_index, max_stack, max_locals;
+        int pre_attrib_offset, offset, code_length, code_offset, attributes_count;
+        unsigned int ucode_length;
+        char *code;
+        struct string_constant *name_constant;
+        struct method *method = malloc(sizeof(struct method));
+        if(method == 0) error("Insufficient memory");
+        //@open class_file_with_constants(class_file);
+        method->next = class_file->methods;
+        access_flags = reader_next_uint16(reader);
+        name_index = reader_next_uint16(reader);
+        method->name_index= name_index;
+        if(name_index < 1 ||  name_index >= class_file->constant_count) {
+            error("ERROR: bad index");
+        }
 
-struct class_file* parse_class_file(struct chars_reader* reader)
-    //@ requires chars_reader(reader, ?buffer, ?size, ?f);
-    //@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_constants(result);
+        //@ open constants(_,?values);
+        //@ assert name_index >= 1 &*& name_index < length(values);
+        name_constant = constants_clone_info(class_file->constants, STRING, name_index);
+        method->name = name_constant->string;
+        method->name_length = name_constant->length;
+        free(name_constant);
+        descriptor_index = reader_next_uint16(reader);
+        pre_attrib_offset = reader_get_offset(reader);
+        reader_skip(reader, 8);
+        max_stack = reader_next_uint16(reader);
+        method->max_stack = max_stack;
+        max_locals = reader_next_uint16(reader);
+        method->max_locals = max_locals;
+        offset = reader_get_offset(reader);
+        ucode_length = reader_next_uint32(reader);
+        if(ucode_length > (unsigned int) INT_MAX) {
+            error("ERROR: code length not supported yet");
+        }
+        code_length = (int) ucode_length;
+        method->code_length = code_length;
+        code_offset = reader_get_offset(reader);
+        code = reader_next_chars(reader, code_length);
+        method->code = code;
+        reader_set_offset(reader, pre_attrib_offset);
+        attributes_count = parse_attributes(reader);
+        class_file->methods = method;
+    }
+}
+
+struct class_file *parse_class_file(struct chars_reader *reader)
+//@ requires chars_reader(reader, ?buffer, ?size, ?f);
+//@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_constants(result);
 {
     unsigned short minor_version, major_version, access_flags, this_class, super_class, interfaces_count;
     unsigned int magic;
-    struct class_file* class_file = malloc(sizeof(struct class_file));
+    struct class_file *class_file = malloc(sizeof(struct class_file));
     int offset = 0;
     int i, attributes_count;
     if(class_file == 0)
@@ -614,7 +615,7 @@ struct class_file* parse_class_file(struct chars_reader* reader)
     super_class = reader_next_uint16(reader);
     interfaces_count = reader_next_uint16(reader);
     for(i = 0; i < interfaces_count; i++)
-    	//@ invariant chars_reader(reader,buffer,size,f) &*& i >= 0 &*& i <= interfaces_count ;
+        //@ invariant chars_reader(reader,buffer,size,f) &*& i >= 0 &*& i <= interfaces_count ;
     {
         unsigned short interfaces_index = reader_next_uint16(reader);
     }
@@ -829,7 +830,7 @@ int stack_count(struct stack *s)
 }
 
 // int stack_get(struct stack* s, int index_from_bottom)
-//     //@ requires stack(s, ?values) &*& index_from_bottom >= 0 &*& index_from_bottom < length(values);
+//     //@ requires stack(s, ?values) &*& index_from_bottom >= 0 &*& index_from_bottom < length(values) &*& length(values) > 0;
 //     //@ ensures stack(s, values) &*& result == nth(length(values) - index_from_bottom, values);
 // {
 //     struct node* n;
@@ -838,10 +839,11 @@ int stack_count(struct stack *s)
 //         error("ERROR: bad stack index");
 //     }
 //     n = node_at(s->top, s->count - index_from_bottom - 1);
-//     //@ lseg_to_nodes_lemma(n);
-//     //@ open nodes(n, ?values2);
+//     //@ open lseg(n, 0, ?values2);
 //     return node_get_value(n);
-//     //@ close nodes(n, values2);
+//     //@ close lseg(n, 0, values2);
+//     //@ lseg_append_lemma(s->top);
+//     //@ lseg_to_nodes_lemma(s->top);
 //     //@ close stack(s, values);
 // }
 
