@@ -339,7 +339,7 @@ typedef bool method_predicate(struct method *method, void *data);
             &*& class_file->method_count |-> ?method_count
             &*& class_file->methods |-> ?methods;
 
-    predicate class_file_with_constants(struct class_file *class_file) =
+    predicate class_file_with_constants(struct class_file *class_file, struct method *methods) =
         malloc_block_class_file(class_file)
             &*& class_file->constant_count |-> ?constant_count
             &*& class_file->constants |-> ?constants
@@ -347,18 +347,7 @@ typedef bool method_predicate(struct method *method, void *data);
             &*& constant_count == length(constant_values) + 1
             &*& class_file->field_count |-> ?field_count
             &*& class_file->method_count |-> ?method_count
-            &*& class_file->methods |-> ?methods;
-
-    predicate class_file_with_tmp_methods(struct class_file *class_file, struct method *methods, int tmp_count) =
-        malloc_block_class_file(class_file)
-            &*& class_file->constant_count |-> ?constant_count
-            &*& class_file->constants |-> ?constants
-            &*& constants(constants, ?values)
-            &*& constant_count == length(values) + 1
-            &*& class_file->field_count |-> ?field_count
-            &*& class_file->method_count |-> ?method_count
-            &*& class_file->methods |-> methods
-            &*& methods(methods, tmp_count);
+            &*& class_file->methods |-> methods;
 
     predicate class_file_with_methods(struct class_file *class_file) =
         malloc_block_class_file(class_file)
@@ -381,7 +370,7 @@ struct class_file {
 
 void parse_constant_pool(struct chars_reader *reader, struct class_file *class_file)
 //@ requires chars_reader(reader,?buffer,?size,?f) &*& empty_class_file(class_file);
-//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_constants(class_file);
+//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_constants(class_file, _);
 {
     struct constant *constants;
     int i;
@@ -509,7 +498,7 @@ void parse_constant_pool(struct chars_reader *reader, struct class_file *class_f
     constants = constants_reverse(constants);
     class_file->constant_count = constant_count;
     class_file->constants = constants;
-    //@ close class_file_with_constants(class_file);
+    //@ close class_file_with_constants(class_file, _);
 }
 
 int parse_attributes(struct chars_reader *reader)
@@ -532,13 +521,13 @@ int parse_attributes(struct chars_reader *reader)
 }
 
 void parse_fields(struct chars_reader *reader, struct class_file *class_file)
-//@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file_with_constants(class_file);
-//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_constants(class_file);
+//@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file_with_constants(class_file, ?methods);
+//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_constants(class_file, methods);
 
 {
     int i;
     unsigned short field_count = reader_next_uint16(reader);
-    //@ open class_file_with_constants(class_file);
+    //@ open class_file_with_constants(class_file, methods);
     class_file->field_count = field_count;
     for(i = 0; i < field_count; i++)
         //@ invariant chars_reader(reader,buffer,size,f) &*& i >= 0 &*& i <= field_count;
@@ -548,22 +537,22 @@ void parse_fields(struct chars_reader *reader, struct class_file *class_file)
         unsigned short descriptor_index = reader_next_uint16(reader);
         int attributes_count = parse_attributes(reader);
     }
-    //@ close class_file_with_constants(class_file);
+    //@ close class_file_with_constants(class_file, methods);
 }
 
 void parse_methods(struct chars_reader *reader, struct class_file *class_file)
-    //@ requires chars_reader(reader, ?buffer, ?size, ?f) &*& class_file_with_constants(class_file);
+    //@ requires chars_reader(reader, ?buffer, ?size, ?f) &*& class_file_with_constants(class_file, _);
     //@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_methods(class_file);
 {
     int i;
     unsigned short method_count = reader_next_uint16(reader);
-    //@open class_file_with_constants(class_file);
+    //@open class_file_with_constants(class_file, _);
     class_file->method_count = method_count;
     class_file->methods = 0;
     //@ close methods(0, 0);
-    //@ close class_file_with_tmp_methods(class_file, 0, 0);
+    //@ close class_file_with_constants(class_file, 0);
     for(i = 0; i < method_count; i++)
-        //@ invariant i >= 0 &*& i <= method_count &*& class_file_with_tmp_methods(class_file, ?methods, i) &*& chars_reader(reader, buffer, size, f);
+        //@ invariant i >= 0 &*& i <= method_count &*& class_file_with_constants(class_file, ?methods) &*& methods(methods, i) &*& chars_reader(reader, buffer, size, f);
     {
         unsigned short access_flags, name_index, descriptor_index, max_stack, max_locals;
         int pre_attrib_offset, offset, code_length, code_offset, attributes_count;
@@ -572,7 +561,7 @@ void parse_methods(struct chars_reader *reader, struct class_file *class_file)
         struct string_constant *name_constant;
         struct method *method = malloc(sizeof(struct method));
         if(method == 0) error("Insufficient memory");
-        //@ open class_file_with_tmp_methods(class_file, methods, i);
+        //@ open class_file_with_constants(class_file, methods);
         method->next = class_file->methods;
         access_flags = reader_next_uint16(reader);
         name_index = reader_next_uint16(reader);
@@ -607,15 +596,15 @@ void parse_methods(struct chars_reader *reader, struct class_file *class_file)
         attributes_count = parse_attributes(reader);
         class_file->methods = method;
         //@ close methods(method, i + 1);
-        //@ close class_file_with_tmp_methods(class_file, method, i + 1);
+        //@ close class_file_with_constants(class_file, method);
     }
-    //@ open class_file_with_tmp_methods(class_file, ?methods, ?count);
+    //@ open class_file_with_constants(class_file, ?methods);
     //@ close class_file_with_methods(class_file);
 }
 
 struct class_file *parse_class_file(struct chars_reader *reader)
 //@ requires chars_reader(reader, ?buffer, ?size, ?f);
-//@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_constants(result);
+//@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_constants(result, _);
 {
     unsigned short minor_version, major_version, access_flags, this_class, super_class, interfaces_count;
     unsigned int magic;
