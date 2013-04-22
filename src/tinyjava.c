@@ -558,12 +558,13 @@ struct class_file {
 //     return class_file;
 // }
 
+//              FIXME: Removed from predicate node
+//              &*& (thread != 0 ? thread(thread, ?thread_run, ?data, ?info) : thread == 0)
 /*@
     predicate node(struct node *node, int value, struct thread *thread, struct node *next) =
             malloc_block_node(node)
                 &*& node->value |-> value
                 &*& node->thread |-> thread
-                &*& (thread != 0 ? thread(thread, ?thread_run, ?data, ?info) : thread == 0)
                 &*& node->next |-> next;
     predicate nodes(struct node *node, list<int> values) =
         values == nil<int> ?
@@ -580,28 +581,28 @@ struct node {
 
 int node_get_value(struct node *n)
     //@ requires node(n, ?value, ?thread, ?next);
-    //@ ensures node(n, value, thread, next) &*& result == value;
+    //@ ensures node(n, value, 0, next) &*& result == value;
 {
     //@ open node(n, value, thread, next);
     // if(n->thread != 0) {
     //     thread_join(n->thread);
     // }
-    // n->thread = 0;
+    n->thread = 0;
     return n->value;
-    //@ close node(n, value, thread, next);
+    //@ close node(n, value, 0, next);
 }
 
 void node_set_value(struct node *n, int value)
     //@ requires node(n, _, ?thread, ?next);
-    //@ ensures node(n, value, thread, next);
+    //@ ensures node(n, value, 0, next);
 {
     //@ open node(n, _, thread, next);
     // if(n->thread != 0) {
     //     thread_join(n->thread);
     // }
-    // n->thread = 0;
+    n->thread = 0;
     n->value = value;
-    //@ close node(n, value, thread, next);
+    //@ close node(n, value, 0, next);
 }
 
 /*@
@@ -716,28 +717,28 @@ void stack_push(struct stack *s, int value)
     //@ close stack(s, cons<int>(value, values));
 }
 
-// int stack_pop(struct stack* s)
-//     //@ requires stack(s, ?values) &*& length(values) != 0;
-//     //@ ensures stack(s, tail(values)) &*& result == head(values);
-// {
-//     //@ open stack(s, values);
-//     struct node* n;
-//     int res;
-//     if(s->count == 0) {
-//         error("ERROR: stack underflow");
-//     }
-//     n = s->top;
-//     //@ open nodes(n, values);
-//     //@ open node(n, ?value, ?thread, ?next);
-//     s->top = s->top->next;
-//     //@ close node(n, value, thread, next);
-//     s->count--;
-//     res = node_get_value(n);
-//     //@ open node(n, value, thread, next);
-//     free(n);
-//     //@ close stack(s, tail(values));
-//     return res;
-// }
+int stack_pop(struct stack* s)
+    //@ requires stack(s, ?values) &*& length(values) != 0;
+    //@ ensures stack(s, tail(values)) &*& result == head(values);
+{
+    //@ open stack(s, values);
+    struct node* n;
+    int res;
+    if(s->count == 0) {
+        error("ERROR: stack underflow");
+    }
+    n = s->top;
+    //@ open nodes(n, values);
+    //@ open node(n, ?value, ?thread, ?next);
+    s->top = s->top->next;
+    //@ close node(n, value, thread, next);
+    s->count--;
+    res = node_get_value(n);
+    //@ open node(n, value, 0, next);
+    free(n);
+    //@ close stack(s, tail(values));
+    return res;
+}
 
 int stack_count(struct stack *s)
 //@ requires stack(s, ?values);
@@ -749,7 +750,7 @@ int stack_count(struct stack *s)
 }
 
 // int stack_get(struct stack* s, int index_from_bottom)
-//     //@ requires stack(s, ?values) &*& length(values) != 0 &*& index_from_bottom < length(values);
+//     //@ requires stack(s, ?values) &*& index_from_bottom >= 0 &*& index_from_bottom < length(values);
 //     //@ ensures stack(s, values) &*& result == nth(length(values) - index_from_bottom, values);
 // {
 //     struct node* n;
@@ -758,12 +759,16 @@ int stack_count(struct stack *s)
 //         error("ERROR: bad stack index");
 //     }
 //     n = node_at(s->top, s->count - index_from_bottom - 1);
-//     //@ close stack(s, values);
+//     //@ lseg_to_nodes_lemma(s->top);
+//     //@ lseg_to_nodes_lemma(n);
+//     //@ open nodes(n, ?values2);
 //     return node_get_value(n);
+//     //@ close nodes(n, values2);
+//     //@ close stack(s, values);
 // }
-// 
+
 // void stack_set(struct stack* s, int index_from_bottom, int value)
-//     //@ requires stack(s, ?values) &*& length(values) != 0 &*& index_from_bottom < length(values);
+//     //@ requires stack(s, ?values) &*& index_from_bottom >= 0 &*& index_from_bottom < length(values);
 //     //@ ensures stack(s, values) &*& value == nth(length(values) - index_from_bottom, values);
 // {
 //     struct node* n;
