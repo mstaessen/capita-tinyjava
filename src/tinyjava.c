@@ -46,10 +46,11 @@ struct constant {
                                 nat_constant(info, _, _)))));
     predicate string_constant(struct string_constant *c, unsigned short length, char* string) =
         malloc_block_string_constant(c)
+            &*& malloc_block(string, length)
             &*& c->length |-> length
             &*& length >= 0
             &*& c->string |-> string
-            &*& string(string, ?cs);
+            &*& chars(string, length, ?cs);
 @*/
 struct string_constant {
     unsigned short length;
@@ -139,26 +140,25 @@ void *constants_clone_info(struct constant *c, int expected_tag, int index)
 
         //@ open const_info(?inf, ?tag);
         switch(c->tag) {
-            // FIXME:
-            // case STRING:
-            // char *string;
-            // struct string_constant *info = c->info;
-            // //@ open string_constant(info, ?length, ?str);
-            // struct string_constant *sc = malloc(sizeof(struct string_constant));
-            // if(sc == 0) {
-            //     error("ERROR: insufficient memory");
-            // }
-            // sc->length = info->length;
-            // string = malloc(info->length);
-            // if(string == 0) {
-            //     error("ERROR: insufficient memory");
-            // }
-            // memcpy(string, info->string, info->length);
-            // sc->string = string;
-            // //@ close string_constant(sc, length, str);
-            // //@ close string_constant(info, length, str);
-            // res = sc;
-            // break;
+            case STRING:
+            char *string;
+            struct string_constant *info = c->info;
+            //@ open string_constant(info, ?length, ?str);
+            struct string_constant *sc = malloc(sizeof(struct string_constant));
+            if(sc == 0) {
+                error("ERROR: insufficient memory");
+            }
+            sc->length = info->length;
+            string = malloc(info->length);
+            if(string == 0) {
+                error("ERROR: insufficient memory");
+            }
+            memcpy(string, info->string, info->length);
+            sc->string = string;
+            //@ close string_constant(sc, length, string);
+            //@ close string_constant(info, length, str);
+            res = sc;
+            break;
         case INT:
             struct int_constant *info = c->info;
             //@ open int_constant(info, ?value);
@@ -638,6 +638,19 @@ void node_set_value(struct node *n, int value)
         }
         close nodes(first, values);
     }
+
+    lemma void lseg_append_lemma(struct node *first)
+        requires lseg(first, ?last, ?first_values) &*& lseg(last, 0, ?last_values); 
+        ensures lseg(first, 0, append<int>(first_values, last_values));
+    {
+        open lseg(first, last, first_values); 
+        if (first_values != nil<int>) {
+            open node(first, ?value, ?thread, ?next); 
+            lseg_append_lemma(first->next);
+            close node(first, value, thread, next);
+            close lseg(first, 0, append<int>(first_values, last_values));
+        }
+    }
 @*/ 
 struct node *node_at(struct node *n, int index)
     //@ requires nodes(n, ?values) &*& index >= 0 &*& index < length(values);
@@ -759,7 +772,6 @@ int stack_count(struct stack *s)
 //         error("ERROR: bad stack index");
 //     }
 //     n = node_at(s->top, s->count - index_from_bottom - 1);
-//     //@ lseg_to_nodes_lemma(s->top);
 //     //@ lseg_to_nodes_lemma(n);
 //     //@ open nodes(n, ?values2);
 //     return node_get_value(n);
