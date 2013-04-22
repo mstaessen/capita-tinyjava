@@ -238,20 +238,23 @@ void *constants_clone_info_checked(struct constant *c, int expected_tag, int ind
 }
 
 /*@
-    predicate method(struct method *method, char *name, int name_length, int name_index, int max_locals, int max_stack, char *code, int code_length, struct method* next) =
-        malloc_block_method(method)
-            &*& method->name |-> name
-            &*& method->name_length |-> name_length
-            &*& method->name_index |-> name_index
-            &*& method->max_locals |-> max_locals
-            &*& method->max_stack |-> max_stack
-            &*& method->code |-> code
-            &*& method->code_length |-> code_length
-            &*& method->next |-> next;
     predicate methods(struct method *method, int count) =
         method == 0 ?
             count == 0 :
-                method(method, ?name, ?name_length, ?name_index, ?max_locals, ?max_stack, ?code, ?code_length, ?next)
+                malloc_block_method(method)
+                    &*& count > 0
+                    &*& method->name |-> ?name
+                    &*& method->name_length |-> ?name_length
+                    &*& chars(name, name_length, ?name_cs)
+                    &*& malloc_block(name, name_length)
+                    &*& method->name_index |-> ?name_index
+                    &*& method->max_locals |-> ?max_locals
+                    &*& method->max_stack |-> ?max_stack
+                    &*& method->code |-> ?code
+                    &*& method->code_length |-> ?code_length
+                    &*& chars(code, code_length, ?code_cs)
+                    &*& malloc_block(code, code_length)
+                    &*& method->next |-> ?next
                     &*& methods(next, count - 1);
 @*/
 struct method {
@@ -346,11 +349,23 @@ typedef bool method_predicate(struct method *method, void *data);
             &*& class_file->method_count |-> ?method_count
             &*& class_file->methods |-> ?methods;
 
+    predicate class_file_with_tmp_methods(struct class_file *class_file, struct method *methods, int tmp_count) =
+        malloc_block_class_file(class_file)
+            &*& class_file->constant_count |-> ?constant_count
+            &*& class_file->constants |-> ?constants
+            &*& constants(constants, ?values)
+            &*& constant_count == length(values) + 1
+            &*& class_file->field_count |-> ?field_count
+            &*& class_file->method_count |-> ?method_count
+            &*& class_file->methods |-> methods
+            &*& methods(methods, tmp_count);
+
     predicate class_file_with_methods(struct class_file *class_file) =
         malloc_block_class_file(class_file)
             &*& class_file->constant_count |-> ?constant_count
             &*& class_file->constants |-> ?constants
             &*& constants(constants, ?values)
+            &*& constant_count == length(values) + 1
             &*& class_file->field_count |-> ?field_count
             &*& class_file->method_count |-> ?method_count
             &*& class_file->methods |-> ?methods
@@ -537,17 +552,18 @@ void parse_fields(struct chars_reader *reader, struct class_file *class_file)
 }
 
 void parse_methods(struct chars_reader *reader, struct class_file *class_file)
-//@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file_with_constants(class_file);
-//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_methods(class_file);
+    //@ requires chars_reader(reader, ?buffer, ?size, ?f) &*& class_file_with_constants(class_file);
+    //@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_methods(class_file);
 {
     int i;
     unsigned short method_count = reader_next_uint16(reader);
     //@open class_file_with_constants(class_file);
     class_file->method_count = method_count;
     class_file->methods = 0;
-    //@close class_file_with_constants(class_file);
+    //@ close methods(0, 0);
+    //@ close class_file_with_tmp_methods(class_file, 0, 0);
     for(i = 0; i < method_count; i++)
-        //@ invariant i>= 0 &*& i<= method_count &*& class_file_with_constants(class_file) &*& chars_reader(reader,buffer,size,f);
+        //@ invariant i >= 0 &*& i <= method_count &*& class_file_with_tmp_methods(class_file, ?methods, i) &*& chars_reader(reader, buffer, size, f);
     {
         unsigned short access_flags, name_index, descriptor_index, max_stack, max_locals;
         int pre_attrib_offset, offset, code_length, code_offset, attributes_count;
@@ -556,7 +572,7 @@ void parse_methods(struct chars_reader *reader, struct class_file *class_file)
         struct string_constant *name_constant;
         struct method *method = malloc(sizeof(struct method));
         if(method == 0) error("Insufficient memory");
-        //@open class_file_with_constants(class_file);
+        //@ open class_file_with_tmp_methods(class_file, methods, i);
         method->next = class_file->methods;
         access_flags = reader_next_uint16(reader);
         name_index = reader_next_uint16(reader);
@@ -565,6 +581,8 @@ void parse_methods(struct chars_reader *reader, struct class_file *class_file)
             error("ERROR: bad index");
         }
         name_constant = constants_clone_info(class_file->constants, STRING, name_index);
+        //@ open const_info(name_constant, STRING);
+        //@ open string_constant(name_constant, ?length, ?str);
         method->name = name_constant->string;
         method->name_length = name_constant->length;
         free(name_constant);
@@ -588,7 +606,11 @@ void parse_methods(struct chars_reader *reader, struct class_file *class_file)
         reader_set_offset(reader, pre_attrib_offset);
         attributes_count = parse_attributes(reader);
         class_file->methods = method;
+        //@ close methods(method, i + 1);
+        //@ close class_file_with_tmp_methods(class_file, method, i + 1);
     }
+    //@ open class_file_with_tmp_methods(class_file, ?methods, ?count);
+    //@ close class_file_with_methods(class_file);
 }
 
 struct class_file *parse_class_file(struct chars_reader *reader)
