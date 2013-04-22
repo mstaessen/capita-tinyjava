@@ -566,8 +566,8 @@ struct class_file {
                 &*& (thread != 0 ? thread(thread, ?thread_run, ?data, ?info) : thread == 0)
                 &*& node->next |-> next;
     predicate nodes(struct node *node, list<int> values) =
-        node == 0 ?
-            values == nil<int> :
+        values == nil<int> ?
+            node == 0 :
                 node(node, ?value, ?thread, ?next)
                     &*& nodes(next, ?tail)
                     &*& values == cons<int>(value, tail);
@@ -604,51 +604,57 @@ void node_set_value(struct node *n, int value)
     //@ close node(n, value, thread, next);
 }
 
-// @
-//     predicate lseg(struct node *first, struct node *last, list<void *> values) =
-//         first == last ?
-//             values == cons<void *>(first, nil<void *>) :
-//                 node(first, ?value, ?thread, ?next)
-//                     &*& lseg(next, last, ?tail)
-//                     &*& values == cons<void *>(next, tail);
-// 
-//     lemma void nodes_to_lseg_lemma(struct node *first)
-//         requires nodes(first, ?values);
-//         ensures lseg(first, 0, values);
-//     {
-//         open nodes(first, values);
-//         if (first != 0) {
-//             nodes_to_lseg_lemma(first->next);
-//         }
-//         close lseg(first, 0, values);
-//     }
-// 
-//     lemma void lseg_to_nodes_lemma(struct node *first)
-//         requires lseg(first, 0, ?values);
-//         ensures nodes(first, values);
-//     {
-//         open lseg(first, 0, values);
-//         if (first != 0) {
-//             lseg_to_nodes_lemma(first->next);
-//         }
-//         close nodes(first, values);
-//     }
-// @
-// struct node *node_at(struct node *n, int index)
-//     //@ requires nodes(n, ?values) &*& index >= 0 &*& index < length(values) &*& length(values) > 0;
-//     //@ ensures lseg(n, result, index) &*& lseg(result, 0, length(values) - index);
-// {
-//     if(index == 0) {
-//         return n;
-//     } else {
-//         //@ open nodes(n, values);
-//         //@ open node(n, ?value, ?thread, ?next);
-//         struct node *res = node_at(n->next, index - 1);
-//         //@ close node(n, value, thread, next);
-//         //@ close nodes(n, values);
-//         return res;
-//     }
-// }
+/*@
+    predicate lseg(struct node *first, struct node *last, list<int> values) =
+        values == nil<int> ?
+            first == last :
+                node(first, ?value, ?thread, ?next)
+                    &*& lseg(next, last, ?tail)
+                    &*& values == cons<int>(value, tail);
+
+    lemma void nodes_to_lseg_lemma(struct node *first)
+        requires nodes(first, ?values);
+        ensures lseg(first, 0, values);
+    {
+        open nodes(first, values);
+        if (values != nil<int>) {
+            open node(first, ?value, ?thread, ?next);
+            nodes_to_lseg_lemma(first->next);
+            close node(first, value, thread, next);
+        }
+        close lseg(first, 0, values);
+    }
+
+    lemma void lseg_to_nodes_lemma(struct node *first)
+        requires lseg(first, 0, ?values);
+        ensures nodes(first, values);
+    {
+        open lseg(first, 0, values);
+        if (values != nil<int>) {
+            open node(first, ?value, ?thread, ?next);
+            lseg_to_nodes_lemma(first->next);
+            close node(first, value, thread, next);
+        }
+        close nodes(first, values);
+    }
+@*/ 
+struct node *node_at(struct node *n, int index)
+    //@ requires nodes(n, ?values) &*& index >= 0 &*& index < length(values);
+    //@ ensures lseg(result, 0, drop<int>(index, values)) &*& lseg(n, result, take<int>(index, values));
+{
+    if(index == 0) {
+        //@ nodes_to_lseg_lemma(n);
+        //@ close lseg(n, n, nil<int>);
+        return n;
+    } else {
+        //@ open nodes(n, values);
+        //@ open node(n, ?value, ?thread, ?next);
+        struct node *res = node_at(n->next, index - 1);
+        //@ close node(n, value, thread, next);
+        //@ close lseg(n, res, take<int>(index, values));
+        return res;
+    }
+}
 
 /*@
     predicate stack(struct stack *stack, list<int> values) =
