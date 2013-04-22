@@ -8,8 +8,8 @@
 #include "util.h"
 
 void error(char *msg)
-    //@ requires [?f]string(msg, ?cs);
-    //@ ensures false;
+//@ requires [?f]string(msg, ?cs);
+//@ ensures false;
 {
     puts(msg);
     abort();
@@ -98,23 +98,23 @@ struct name_and_type_constant {
 };
 
 
-struct constant* constants_reverse(struct constant* c)
-    //@ requires constants(c, ?values);
-    //@ ensures constants(result, reverse<void *>(values));
+struct constant *constants_reverse(struct constant *c)
+//@ requires constants(c, ?values);
+//@ ensures constants(result, reverse<void *>(values));
 {
-    struct constant* res = 0;
-    struct constant* curr = c;
+    struct constant *res = 0;
+    struct constant *curr = c;
     //@ close constants(res, nil<void *>);
     //@ append_nil<void *>(reverse<void *>(values));
     while(curr != 0)
-        /*@ 
-            invariant constants(res, ?res_values) 
+        /*@
+            invariant constants(res, ?res_values)
                 &*& constants(curr, ?curr_values)
-                &*& reverse<void *>(values) == append<void *>(reverse<void *>(curr_values), res_values); 
+                &*& reverse<void *>(values) == append<void *>(reverse<void *>(curr_values), res_values);
         @*/
     {
         //@ open constants(curr, curr_values);
-        struct constant* tmp = curr->next;
+        struct constant *tmp = curr->next;
         //@ assert constants(tmp, ?tmp_values);
         curr->next = res;
         res = curr;
@@ -140,7 +140,7 @@ void *constants_clone_info(struct constant *c, int expected_tag, int index)
 
         //@ open const_info(?inf, ?tag);
         switch(c->tag) {
-            case STRING:
+        case STRING:
             char *string;
             struct string_constant *info = c->info;
             //@ open string_constant(info, ?length, ?str);
@@ -263,8 +263,8 @@ struct method {
     predicate_family method_predicate_data(void *p)(void *data);
 @*/
 typedef bool method_predicate(struct method *method, void *data);
-    //@ requires method_predicate_data(this)(data);
-    //@ ensures method_predicate_data(this)(data);
+//@ requires method_predicate_data(this)(data);
+//@ ensures method_predicate_data(this)(data);
 
 // bool has_name(struct method* method, void* data) //@ : method_predicate
 //     //@ requires method_predicate_data(has_name)(name_index) &*& method(method, ?m_name, ?m_name_length, ?m_name_index, ?m_max_locals, ?m_max_stack, ?m_code, ?m_code_length, ?m_next);
@@ -284,7 +284,7 @@ typedef bool method_predicate(struct method *method, void *data);
 
 
 // /*@
-//     predicate_family_instance method_predicate_data(has_name_index)(void *data) = 
+//     predicate_family_instance method_predicate_data(has_name_index)(void *data) =
 //         method_name_index(data, _);
 // @*/
 // bool has_name_index(struct method *method, void *name_index) //@ : method_predicate
@@ -318,15 +318,35 @@ typedef bool method_predicate(struct method *method, void *data);
 //     }
 // }
 
+
+//             FIXME: removed from class_file_with_constants
+//             &*& constant_count == length(constant_values)
 /*@
-    predicate class_file(struct class_file *class_file, int constant_count, struct constant *constants, int field_count, int method_count, struct method *methods) =
+    predicate empty_class_file(struct class_file *class_file) =
         malloc_block_class_file(class_file)
-            &*& class_file->constant_count |-> constant_count
-            &*& class_file->constants |-> constants
+            &*& class_file->constant_count |-> ?constant_count
+            &*& class_file->constants |-> ?constants
+            &*& class_file->field_count |-> ?field_count
+            &*& class_file->method_count |-> ?method_count
+            &*& class_file->methods |-> ?methods;
+
+    predicate class_file_with_constants(struct class_file *class_file) = 
+        malloc_block_class_file(class_file)
+            &*& class_file->constant_count |-> ?constant_count
+            &*& class_file->constants |-> ?constants
+            &*& constants(constants, ?constant_values)
+            &*& class_file->field_count |-> ?field_count
+            &*& class_file->method_count |-> ?method_count
+            &*& class_file->methods |-> ?methods;
+
+    predicate class_file_with_methods(struct class_file *class_file) = 
+        malloc_block_class_file(class_file)
+            &*& class_file->constant_count |-> ?constant_count
+            &*& class_file->constants |-> ?constants
             &*& constants(constants, ?values)
-            &*& class_file->field_count |-> field_count
-            &*& class_file->method_count |-> method_count
-            &*& class_file->methods |-> methods
+            &*& class_file->field_count |-> ?field_count
+            &*& class_file->method_count |-> ?method_count
+            &*& class_file->methods |-> ?methods
             &*& methods(methods, method_count);
 @*/
 struct class_file {
@@ -337,128 +357,139 @@ struct class_file {
     struct method *methods;
 };
 
-void parse_constant_pool(struct chars_reader* reader, struct class_file* class_file)
-//@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file(class_file, ?cf_constant_count, ?cf_constants, ?field_count, ?method_count, ?methods);
-//@ ensures chars_reader(reader,buffer,size,f) &*& class_file(class_file, cf_constant_count, cf_constants, field_count, method_count, methods);
+void parse_constant_pool(struct chars_reader *reader, struct class_file *class_file)
+//@ requires chars_reader(reader,?buffer,?size,?f) &*& empty_class_file(class_file);
+//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_constants(class_file);
 {
-  struct constant* constants;
-  int i;
-  unsigned short constant_count = 0;
-  constant_count = reader_next_uint16(reader);
-  if(constant_count < (unsigned short) 1)
-    error("ERROR: constant count must be at least one");
-  constants = 0;
-  //@ close constants(0,nil<void*>);
+    struct constant *constants;
+    int i;
+    unsigned short constant_count = 0;
+    constant_count = reader_next_uint16(reader);
+    if(constant_count < (unsigned short) 1)
+        error("ERROR: constant count must be at least one");
+    constants = 0;
+    //@ close constants(0,nil<void*>);
 
-  for(i = 1; i < constant_count; i++)
-  //@ invariant chars_reader(reader,buffer,size,f) &*& 1<=i &*& i<= constant_count &*&  constants(constants, ?values) &*& length(values) == i-1;
-  {
+    for(i = 1; i < constant_count; i++)
+        //@ invariant chars_reader(reader,buffer,size,f) &*& 1<=i &*& i<= constant_count &*&  constants(constants, ?values) &*& length(values) == i-1;
+    {
 
-    unsigned char tag;
+        unsigned char tag;
 
-    struct constant* constant = malloc(sizeof(struct constant));
-    if(constant == 0) {
-      error("ERROR: insufficient memory");
+        struct constant *constant = malloc(sizeof(struct constant));
+        if(constant == 0) {
+            error("ERROR: insufficient memory");
+        }
+        tag = reader_next_uint8(reader);
+        constant->tag = tag;
+        switch((int) tag) {
+        case STRING:
+        {
+            unsigned short length;
+            char *string;
+
+            struct string_constant *string_constant = malloc(sizeof(struct string_constant));
+            if(string_constant == 0) {
+                error("ERROR: insufficient memory");
+            }
+            length = reader_next_uint16(reader);
+            string_constant->length = length;
+            string = reader_next_chars(reader, length);
+
+            string_constant->string = string;
+            constant->info = string_constant;
+            //@ close string_constant(string_constant, length, string);
+            break;
+        }
+        case INT:
+        {
+            int value;
+            struct int_constant *int_constant = malloc(sizeof(struct int_constant));
+            if(int_constant == 0) {
+                error("ERROR: insufficient memory");
+            }
+            value = reader_next_int32(reader);
+            int_constant->value = value;
+            constant->info = int_constant;
+            //@ close int_constant(int_constant, value);
+            break;
+        }
+        case CLASS:
+        {
+            unsigned short name_index;
+            struct class_constant *class_constant = malloc(sizeof(struct class_constant));
+            if(class_constant == 0) {
+                error("ERROR: insufficient memory");
+            }
+            name_index = reader_next_uint16(reader);
+            class_constant->name_index = name_index;
+            if(name_index < 1 || name_index >= constant_count) {
+                error("ERROR: bad index");
+            }
+            constant->info = class_constant;
+            //@ close class_constant(class_constant, name_index);
+            break;
+        }
+        case METHODREF:
+        {
+            unsigned short class_index;
+            unsigned short name_and_type_index;
+            struct methodref_constant *methodref_constant = malloc(sizeof(struct methodref_constant));
+            if(methodref_constant == 0) {
+                error("ERROR: insufficient memory");
+            }
+            class_index = reader_next_uint16(reader);
+            methodref_constant->class_index = class_index;
+            if(class_index < 1 ||  class_index >= constant_count) {
+                error("ERROR: bad index");
+            }
+            name_and_type_index = reader_next_uint16(reader);
+            if(name_and_type_index < 1 ||  name_and_type_index >= constant_count) {
+                error("ERROR: bad index");
+            }
+            methodref_constant->name_and_type_index = name_and_type_index;
+            constant->info = methodref_constant;
+            //@ close methodref_constant(methodref_constant, class_index, name_and_type_index);
+            break;
+        }
+        case NAME_AND_TYPE:
+        {
+            unsigned short name_index;
+            unsigned short descriptor_index;
+            struct name_and_type_constant *name_and_type_constant = malloc(sizeof(struct name_and_type_constant));
+            if(name_and_type_constant == 0) {
+                error("ERROR: insufficient memory");
+            }
+            name_index = reader_next_uint16(reader);
+            if(name_index < 1 ||  name_index >= constant_count) {
+                error("ERROR: bad index");
+            }
+            name_and_type_constant->name_index = name_index;
+            descriptor_index = reader_next_uint16(reader);
+            if(descriptor_index < 1 ||  descriptor_index >= constant_count) {
+                error("ERROR: bad index");
+            }
+            name_and_type_constant->descriptor_index = descriptor_index;
+            constant->info = name_and_type_constant;
+            //@ close nat_constant(name_and_type_constant, name_index, descriptor_index);
+            break;
+        }
+        default:
+            error("Unsupported constant pool tag");
+        }
+        constant->next = constants;
+        constants = constant;
+        //@ close const_info(constant->info,tag);
+        //@ close constants(constants,cons<void*>(constant,values));
     }
-    tag = reader_next_uint8(reader);
-    constant->tag = tag;
-    switch((int) tag) {
-      case STRING:
-        {
-          unsigned short length;
-          char* string;
 
-          struct string_constant* string_constant = malloc(sizeof(struct string_constant));
-          if(string_constant == 0) { error("ERROR: insufficient memory"); }
-          length = reader_next_uint16(reader);
-          string_constant->length = length;
-          string = reader_next_chars(reader, length);
-
-          string_constant->string = string;
-          constant->info = string_constant;
-          //@ close string_constant(string_constant, length, string);
-          break;
-        }
-      case INT:
-        {
-          int value;
-          struct int_constant* int_constant = malloc(sizeof(struct int_constant));
-          if(int_constant == 0) { error("ERROR: insufficient memory"); }
-          value = reader_next_int32(reader);
-          int_constant->value = value;
-          constant->info = int_constant;
-          //@ close int_constant(int_constant, value);
-          break;
-        }
-      case CLASS:
-        {
-          unsigned short name_index;
-          struct class_constant* class_constant = malloc(sizeof(struct class_constant));
-          if(class_constant == 0) { error("ERROR: insufficient memory"); }
-          name_index = reader_next_uint16(reader);
-          class_constant->name_index = name_index;
-          if(name_index < 1 || name_index >= constant_count) { error("ERROR: bad index"); }
-          constant->info = class_constant;
-          //@ close class_constant(class_constant, name_index);
-          break;
-        }
-      case METHODREF:
-        {
-          unsigned short class_index;
-          unsigned short name_and_type_index;
-          struct methodref_constant* methodref_constant = malloc(sizeof(struct methodref_constant));
-          if(methodref_constant == 0) { error("ERROR: insufficient memory"); }
-          class_index = reader_next_uint16(reader);
-          methodref_constant->class_index = class_index;
-          if(class_index < 1 ||  class_index >= constant_count) { error("ERROR: bad index"); }
-          name_and_type_index = reader_next_uint16(reader);
-          if(name_and_type_index < 1 ||  name_and_type_index >= constant_count) { error("ERROR: bad index"); }
-          methodref_constant->name_and_type_index = name_and_type_index;
-          constant->info = methodref_constant;
-          //@ close methodref_constant(methodref_constant, class_index, name_and_type_index);
-          break;
-        }
-      case NAME_AND_TYPE:
-        {
-          unsigned short name_index;
-          unsigned short descriptor_index;
-          struct name_and_type_constant* name_and_type_constant = malloc(sizeof(struct name_and_type_constant));
-          if(name_and_type_constant == 0) { error("ERROR: insufficient memory"); }
-          name_index = reader_next_uint16(reader);
-          if(name_index < 1 ||  name_index >= constant_count) { error("ERROR: bad index"); }
-          name_and_type_constant->name_index = name_index;
-          descriptor_index = reader_next_uint16(reader);
-          if(descriptor_index < 1 ||  descriptor_index >= constant_count) { error("ERROR: bad index"); }
-          name_and_type_constant->descriptor_index = descriptor_index;
-          constant->info = name_and_type_constant;
-          //@ close nat_constant(name_and_type_constant, name_index, descriptor_index);
-          break;
-        }
-      default:
-        error("Unsupported constant pool tag");
-    }
-    constant->next = constants;
-    constants = constant;
-    //constant
-    //constant info
-    //@ close const_info(constant->info,tag);
-    // open constants(constants,?tail);
-    //@ close constants(constants,cons<void*>(constant,values));
-  
-
-  }
-    //@ leak constants(constants,_);
-
-//  //@ open class_file(class_file, cf_constant_count, cf_constants, field_count, method_count, methods);
-//  //@ open constants(cf_constants,_);
-//  constants = constants_reverse(constants);
-//
-//  class_file->constant_count = constant_count;
-//  class_file->constants = constants;
-//  // assert cf_constant_count == constant_count;
-//  //@ close class_file(class_file, cf_constant_count, constants, field_count, method_count, methods);
+    //@ open empty_class_file(class_file);
+    constants = constants_reverse(constants);
+    class_file->constant_count = constant_count;
+    class_file->constants = constants;
+    //@ close class_file_with_constants(class_file);
 }
-// 
+//
 // int parse_attributes(struct chars_reader* reader)
 //     //@ requires chars_reader(reader, ?buffer, ?size, ?f);
 //     //@ ensures chars_reader(reader, buffer, size, f);
@@ -539,33 +570,36 @@ void parse_constant_pool(struct chars_reader* reader, struct class_file* class_f
 //         class_file->methods = method;
 //     }
 // }
-//
-// struct class_file* parse_class_file(struct chars_reader* reader)
-// {
-//     unsigned short minor_version, major_version, access_flags, this_class, super_class, interfaces_count;
-//     unsigned int magic;
-//     struct class_file* class_file = malloc(sizeof(struct class_file));
-//     int offset = 0;
-//     int i, attributes_count;
-//     if(class_file == 0)
-//         error("ERROR: insufficient memory");
-//     magic = reader_next_uint32(reader);
-//     minor_version = reader_next_uint16(reader);
-//     major_version = reader_next_uint16(reader);
-//     parse_constant_pool(reader, class_file);
-//     access_flags = reader_next_uint16(reader);
-//     this_class = reader_next_uint16(reader);
-//     super_class = reader_next_uint16(reader);
-//     interfaces_count = reader_next_uint16(reader);
-//     for(i = 0; i < interfaces_count; i++)
-//     {
-//         unsigned short interfaces_index = reader_next_uint16(reader);
-//     }
-//     parse_fields(reader, class_file);
-//     parse_methods(reader, class_file);
-//     attributes_count = parse_attributes(reader);
-//     return class_file;
-// }
+
+struct class_file* class_file(struct chars_reader* reader)
+    //@ requires chars_reader(reader, ?buffer, ?size, ?f);
+    //@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_constants(result);
+{
+    unsigned short minor_version, major_version, access_flags, this_class, super_class, interfaces_count;
+    unsigned int magic;
+    struct class_file* class_file = malloc(sizeof(struct class_file));
+    int offset = 0;
+    int i, attributes_count;
+    if(class_file == 0)
+        error("ERROR: insufficient memory");
+    //@ close empty_class_file(class_file);
+    magic = reader_next_uint32(reader);
+    minor_version = reader_next_uint16(reader);
+    major_version = reader_next_uint16(reader);
+    parse_constant_pool(reader, class_file);
+    //access_flags = reader_next_uint16(reader);
+    //this_class = reader_next_uint16(reader);
+    //super_class = reader_next_uint16(reader);
+    //interfaces_count = reader_next_uint16(reader);
+    //for(i = 0; i < interfaces_count; i++)
+    //{
+    //    unsigned short interfaces_index = reader_next_uint16(reader);
+    //}
+    //parse_fields(reader, class_file);
+    //parse_methods(reader, class_file);
+    //attributes_count = parse_attributes(reader);
+    return class_file;
+}
 
 //              FIXME: Removed from predicate node
 //              &*& (thread != 0 ? thread(thread, ?thread_run, ?data, ?info) : thread == 0)
@@ -589,8 +623,8 @@ struct node {
 };
 
 int node_get_value(struct node *n)
-    //@ requires node(n, ?value, ?thread, ?next);
-    //@ ensures node(n, value, 0, next) &*& result == value;
+//@ requires node(n, ?value, ?thread, ?next);
+//@ ensures node(n, value, 0, next) &*& result == value;
 {
     //@ open node(n, value, thread, next);
     // if(n->thread != 0) {
@@ -602,8 +636,8 @@ int node_get_value(struct node *n)
 }
 
 void node_set_value(struct node *n, int value)
-    //@ requires node(n, _, ?thread, ?next);
-    //@ ensures node(n, value, 0, next);
+//@ requires node(n, _, ?thread, ?next);
+//@ ensures node(n, value, 0, next);
 {
     //@ open node(n, _, thread, next);
     // if(n->thread != 0) {
@@ -649,21 +683,21 @@ void node_set_value(struct node *n, int value)
     }
 
     lemma void lseg_append_lemma(struct node *first)
-        requires lseg(first, ?last, ?first_values) &*& lseg(last, 0, ?last_values); 
+        requires lseg(first, ?last, ?first_values) &*& lseg(last, 0, ?last_values);
         ensures lseg(first, 0, append<int>(first_values, last_values));
     {
-        open lseg(first, last, first_values); 
+        open lseg(first, last, first_values);
         if (first_values != nil<int>) {
-            open node(first, ?value, ?thread, ?next); 
+            open node(first, ?value, ?thread, ?next);
             lseg_append_lemma(first->next);
             close node(first, value, thread, next);
             close lseg(first, 0, append<int>(first_values, last_values));
         }
     }
-@*/ 
+@*/
 struct node *node_at(struct node *n, int index)
-    //@ requires nodes(n, ?values) &*& index >= 0 &*& index < length(values);
-    //@ ensures lseg(result, 0, drop<int>(index, values)) &*& lseg(n, result, take<int>(index, values));
+//@ requires nodes(n, ?values) &*& index >= 0 &*& index < length(values);
+//@ ensures lseg(result, 0, drop<int>(index, values)) &*& lseg(n, result, take<int>(index, values));
 {
     if(index == 0) {
         //@ nodes_to_lseg_lemma(n);
@@ -693,8 +727,8 @@ struct stack {
 };
 
 struct stack *create_stack()
-    //@ requires true;
-    //@ ensures stack(result, nil<int>);
+//@ requires true;
+//@ ensures stack(result, nil<int>);
 {
     int i;
     struct stack *s = malloc(sizeof(struct stack));
@@ -709,8 +743,8 @@ struct stack *create_stack()
 }
 
 void stack_dispose(struct stack *s)
-    //@ requires stack(s, nil<int>);
-    //@ ensures true;
+//@ requires stack(s, nil<int>);
+//@ ensures true;
 {
     //@ open stack(s, nil<int>);
     //@ open nodes(_, _);
@@ -718,8 +752,8 @@ void stack_dispose(struct stack *s)
 }
 
 void stack_push(struct stack *s, int value)
-    //@ requires stack(s, ?values);
-    //@ ensures stack(s, cons<int>(value, values));
+//@ requires stack(s, ?values);
+//@ ensures stack(s, cons<int>(value, values));
 {
     //@ open stack(s, values);
     struct node *new_node = malloc(sizeof(struct node));
@@ -739,12 +773,12 @@ void stack_push(struct stack *s, int value)
     //@ close stack(s, cons<int>(value, values));
 }
 
-int stack_pop(struct stack* s)
-    //@ requires stack(s, ?values) &*& length(values) != 0;
-    //@ ensures stack(s, tail(values)) &*& result == head(values);
+int stack_pop(struct stack *s)
+//@ requires stack(s, ?values) &*& length(values) != 0;
+//@ ensures stack(s, tail(values)) &*& result == head(values);
 {
     //@ open stack(s, values);
-    struct node* n;
+    struct node *n;
     int res;
     if(s->count == 0) {
         error("ERROR: stack underflow");
