@@ -266,7 +266,9 @@ typedef bool method_predicate(struct method *method, void *data);
     //@ requires method_predicate_data(this)(data);
     //@ ensures method_predicate_data(this)(data);
 
-// bool has_name(struct method* method, void* data)
+// bool has_name(struct method* method, void* data) //@ : method_predicate
+//     //@ requires method_predicate_data(has_name)(name_index) &*& method(method, ?m_name, ?m_name_length, ?m_name_index, ?m_max_locals, ?m_max_stack, ?m_code, ?m_code_length, ?m_next);
+//     //@ ensures method_predicate_data(has_name)(name_index) &*& method(method, m_name, m_name_length, m_name_index, m_max_locals, m_max_stack, m_code, m_code_length, m_next);
 // {
 //     char* string = (char*) data;
 //     int string_length = strlen((char*)string);
