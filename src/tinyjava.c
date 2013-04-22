@@ -133,7 +133,7 @@ struct constant *constants_reverse(struct constant *c)
 }
 
 void *constants_clone_info(struct constant *c, int expected_tag, int index)
-//@ requires constants(c, ?values) &*& 1 <= index &*& index < length(values);
+//@ requires constants(c, ?values) &*& index >= 1 &*& index <= length(values);
 //@ ensures constants(c, values) &*& const_info(result, expected_tag);
 {
     //@ open constants(c, values);
@@ -146,75 +146,75 @@ void *constants_clone_info(struct constant *c, int expected_tag, int index)
 
         //@ open const_info(?inf, ?tag);
         switch(c->tag) {
-        case STRING:
-            char *string;
-            struct string_constant *info = c->info;
-            //@ open string_constant(info, ?length, ?str);
-            struct string_constant *sc = malloc(sizeof(struct string_constant));
-            if(sc == 0) {
-                error("ERROR: insufficient memory");
-            }
-            sc->length = info->length;
-            string = malloc(info->length);
-            if(string == 0) {
-                error("ERROR: insufficient memory");
-            }
-            memcpy(string, info->string, info->length);
-            sc->string = string;
-            //@ close string_constant(sc, length, string);
-            //@ close string_constant(info, length, str);
-            res = sc;
-            break;
-        case INT:
-            struct int_constant *info = c->info;
-            //@ open int_constant(info, ?value);
-            struct int_constant *ic = malloc(sizeof(struct int_constant));
-            if(ic == 0) {
-                error("ERROR: insufficient memory");
-            }
-            ic->value = info->value;
-            //@ close int_constant(ic, value);
-            //@ close int_constant(info, value);
-            res = ic;
-            break;
-        case CLASS:
-            struct class_constant *info = c->info;
-            //@ open class_constant(info, ?name_index);
-            struct class_constant *cc = malloc(sizeof(struct class_constant));
-            if(cc == 0) {
-                error("ERROR: insufficient memory");
-            }
-            cc->name_index = info->name_index;
-            //@ close class_constant(cc, name_index);
-            //@ close class_constant(info, name_index);
-            res = cc;
-            break;
-        case METHODREF:
-            struct methodref_constant *info = c->info;
-            //@ open methodref_constant(info, ?class_index, ?nat_index);
-            struct methodref_constant *mrc = malloc(sizeof(struct methodref_constant));
-            if(mrc == 0) {
-                error("ERROR: insufficient memory");
-            }
-            mrc->class_index = info->class_index;
-            mrc->name_and_type_index = info->name_and_type_index;
-            //@ close methodref_constant(mrc, class_index, nat_index);
-            //@ close methodref_constant(info, class_index, nat_index);
-            res = mrc;
-            break;
-        case NAME_AND_TYPE:
-            struct name_and_type_constant *info = c->info;
-            //@ open nat_constant(info, ?name_index, ?descriptor_index);
-            struct name_and_type_constant *ntc = malloc(sizeof(struct name_and_type_constant));
-            if(ntc == 0) {
-                error("ERROR: insufficient memory");
-            }
-            ntc->name_index = info->name_index;
-            ntc->descriptor_index = info->descriptor_index;
-            //@ close nat_constant(ntc, name_index, descriptor_index);
-            //@ close nat_constant(info, name_index, descriptor_index);
-            res = ntc;
-            break;
+            case STRING:
+                char *string;
+                struct string_constant *info = c->info;
+                //@ open string_constant(info, ?length, ?str);
+                struct string_constant *sc = malloc(sizeof(struct string_constant));
+                if(sc == 0) {
+                    error("ERROR: insufficient memory");
+                }
+                sc->length = info->length;
+                string = malloc(info->length);
+                if(string == 0) {
+                    error("ERROR: insufficient memory");
+                }
+                memcpy(string, info->string, info->length);
+                sc->string = string;
+                //@ close string_constant(sc, length, string);
+                //@ close string_constant(info, length, str);
+                res = sc;
+                break;
+            case INT:
+                struct int_constant *info = c->info;
+                //@ open int_constant(info, ?value);
+                struct int_constant *ic = malloc(sizeof(struct int_constant));
+                if(ic == 0) {
+                    error("ERROR: insufficient memory");
+                }
+                ic->value = info->value;
+                //@ close int_constant(ic, value);
+                //@ close int_constant(info, value);
+                res = ic;
+                break;
+            case CLASS:
+                struct class_constant *info = c->info;
+                //@ open class_constant(info, ?name_index);
+                struct class_constant *cc = malloc(sizeof(struct class_constant));
+                if(cc == 0) {
+                    error("ERROR: insufficient memory");
+                }
+                cc->name_index = info->name_index;
+                //@ close class_constant(cc, name_index);
+                //@ close class_constant(info, name_index);
+                res = cc;
+                break;
+            case METHODREF:
+                struct methodref_constant *info = c->info;
+                //@ open methodref_constant(info, ?class_index, ?nat_index);
+                struct methodref_constant *mrc = malloc(sizeof(struct methodref_constant));
+                if(mrc == 0) {
+                    error("ERROR: insufficient memory");
+                }
+                mrc->class_index = info->class_index;
+                mrc->name_and_type_index = info->name_and_type_index;
+                //@ close methodref_constant(mrc, class_index, nat_index);
+                //@ close methodref_constant(info, class_index, nat_index);
+                res = mrc;
+                break;
+            case NAME_AND_TYPE:
+                struct name_and_type_constant *info = c->info;
+                //@ open nat_constant(info, ?name_index, ?descriptor_index);
+                struct name_and_type_constant *ntc = malloc(sizeof(struct name_and_type_constant));
+                if(ntc == 0) {
+                    error("ERROR: insufficient memory");
+                }
+                ntc->name_index = info->name_index;
+                ntc->descriptor_index = info->descriptor_index;
+                //@ close nat_constant(ntc, name_index, descriptor_index);
+                //@ close nat_constant(info, name_index, descriptor_index);
+                res = ntc;
+                break;
         default:
             error("ERROR: bad label");
         }
@@ -560,13 +560,10 @@ void parse_methods(struct chars_reader *reader, struct class_file *class_file)
         method->next = class_file->methods;
         access_flags = reader_next_uint16(reader);
         name_index = reader_next_uint16(reader);
-        method->name_index= name_index;
+        method->name_index = name_index;
         if(name_index < 1 ||  name_index >= class_file->constant_count) {
             error("ERROR: bad index");
         }
-
-        //@ open constants(_,?values);
-        //@ assert name_index >= 1 &*& name_index < length(values);
         name_constant = constants_clone_info(class_file->constants, STRING, name_index);
         method->name = name_constant->string;
         method->name_length = name_constant->length;
