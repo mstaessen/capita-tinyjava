@@ -11,6 +11,14 @@
     lemma_auto(reverse(xs)) void reverse_length<t>(list<t> xs);
         requires true;
         ensures length(reverse(xs)) == length(xs);
+
+    fixpoint int min(int a, int b) {
+        return a < b ? a : b;
+    }
+
+    fixpoint int max(int a, int b) {
+        return a > b ? a : b;
+    }
 @*/
 
 void error(char *msg)
@@ -24,16 +32,16 @@ void error(char *msg)
 enum CONSTANT_TYPE { STRING = 1, INT = 3, CLASS = 7, METHODREF = 10, NAME_AND_TYPE = 12 };
 
 /*@
-    predicate constants(struct constant *constant, list<void *> values) =
-        constant == 0 ?
+    predicate constants(struct constant *c, list<void *> values) =
+        c == 0 ?
             values == nil<void *> :
-                malloc_block_constant(constant)
-                    &*& constant->tag |-> ?tag
-                    &*& constant->info |-> ?info
-                    &*& constant->next |-> ?next
+                malloc_block_constant(c)
+                    &*& c->tag  |-> ?tag
+                    &*& c->info |-> ?info
+                    &*& c->next |-> ?next
                     &*& const_info(info, tag)
                     &*& constants(next, ?tail)
-                    &*& values == cons<void *>(constant, tail);
+                    &*& values == cons<void *>(c, tail);
 @*/
 struct constant {
     int tag;
@@ -49,14 +57,15 @@ struct constant {
                     (tag == INT ? int_constant(info, _) :
                         (tag == CLASS ? class_constant(info, _) :
                             (tag == METHODREF ? methodref_constant(info, _, _) :
-                                nat_constant(info, _, _)))));
-    predicate string_constant(struct string_constant *c, unsigned short length, char* string) =
-        malloc_block_string_constant(c)
-            &*& malloc_block(string, length)
-            &*& c->length |-> length
+                                (tag == NAME_AND_TYPE ? nat_constant(info, _, _) :
+                                    false)))));
+    predicate string_constant(struct string_constant *sc, unsigned short length, char* string) =
+        malloc_block_string_constant(sc)
+            &*& sc->length |-> length
+            &*& sc->string |-> string
             &*& length >= 0
-            &*& c->string |-> string
-            &*& chars(string, length, ?cs);
+            &*& chars(string, length, ?cs)
+            &*& malloc_block(string, length);
 @*/
 struct string_constant {
     unsigned short length;
@@ -64,28 +73,28 @@ struct string_constant {
 };
 
 /*@
-    predicate int_constant(struct int_constant *c, int value) =
-        malloc_block_int_constant(c)
-            &*& c->value |-> value;
+    predicate int_constant(struct int_constant *ic, int value) =
+        malloc_block_int_constant(ic)
+            &*& ic->value |-> value;
 @*/
 struct int_constant {
     int value;
 };
 
 /*@
-    predicate class_constant(struct class_constant *c, unsigned short name_index) =
-        malloc_block_class_constant(c)
-            &*& c->name_index |-> name_index;
+    predicate class_constant(struct class_constant *cc, unsigned short name_index) =
+        malloc_block_class_constant(cc)
+            &*& cc->name_index |-> name_index;
 @*/
 struct class_constant {
     unsigned short name_index;
 };
 
 /*@
-    predicate methodref_constant(struct methodref_constant *c, unsigned short class_index, unsigned short nat_index) =
-        malloc_block_methodref_constant(c)
-            &*& c->class_index |-> class_index
-            &*& c->name_and_type_index |-> nat_index;
+    predicate methodref_constant(struct methodref_constant *mc, unsigned short class_index, unsigned short nat_index) =
+        malloc_block_methodref_constant(mc)
+            &*& mc->class_index         |-> class_index
+            &*& mc->name_and_type_index |-> nat_index;
 @*/
 struct methodref_constant {
     unsigned short class_index;
@@ -93,10 +102,10 @@ struct methodref_constant {
 };
 
 /*@
-    predicate nat_constant(struct name_and_type_constant *c, unsigned short name_index, unsigned short descriptor_index) =
-        malloc_block_name_and_type_constant(c)
-            &*& c->name_index |-> name_index
-            &*& c->descriptor_index |-> descriptor_index;
+    predicate nat_constant(struct name_and_type_constant *natc, unsigned short name_index, unsigned short descriptor_index) =
+        malloc_block_name_and_type_constant(natc)
+            &*& natc->name_index       |-> name_index
+            &*& natc->descriptor_index |-> descriptor_index;
 @*/
 struct name_and_type_constant {
     unsigned short name_index;
@@ -105,8 +114,8 @@ struct name_and_type_constant {
 
 
 struct constant *constants_reverse(struct constant *c)
-//@ requires constants(c, ?values);
-//@ ensures constants(result, reverse<void *>(values)) &*& length(values) == length(reverse(values));
+    //@ requires constants(c, ?values);
+    //@ ensures constants(result, reverse<void *>(values));
 {
     struct constant *res = 0;
     struct constant *curr = c;
@@ -146,75 +155,75 @@ void *constants_clone_info(struct constant *c, int expected_tag, int index)
 
         //@ open const_info(?inf, ?tag);
         switch(c->tag) {
-            case STRING:
-                char *string;
-                struct string_constant *info = c->info;
-                //@ open string_constant(info, ?length, ?str);
-                struct string_constant *sc = malloc(sizeof(struct string_constant));
-                if(sc == 0) {
-                    error("ERROR: insufficient memory");
-                }
-                sc->length = info->length;
-                string = malloc(info->length);
-                if(string == 0) {
-                    error("ERROR: insufficient memory");
-                }
-                memcpy(string, info->string, info->length);
-                sc->string = string;
-                //@ close string_constant(sc, length, string);
-                //@ close string_constant(info, length, str);
-                res = sc;
-                break;
-            case INT:
-                struct int_constant *info = c->info;
-                //@ open int_constant(info, ?value);
-                struct int_constant *ic = malloc(sizeof(struct int_constant));
-                if(ic == 0) {
-                    error("ERROR: insufficient memory");
-                }
-                ic->value = info->value;
-                //@ close int_constant(ic, value);
-                //@ close int_constant(info, value);
-                res = ic;
-                break;
-            case CLASS:
-                struct class_constant *info = c->info;
-                //@ open class_constant(info, ?name_index);
-                struct class_constant *cc = malloc(sizeof(struct class_constant));
-                if(cc == 0) {
-                    error("ERROR: insufficient memory");
-                }
-                cc->name_index = info->name_index;
-                //@ close class_constant(cc, name_index);
-                //@ close class_constant(info, name_index);
-                res = cc;
-                break;
-            case METHODREF:
-                struct methodref_constant *info = c->info;
-                //@ open methodref_constant(info, ?class_index, ?nat_index);
-                struct methodref_constant *mrc = malloc(sizeof(struct methodref_constant));
-                if(mrc == 0) {
-                    error("ERROR: insufficient memory");
-                }
-                mrc->class_index = info->class_index;
-                mrc->name_and_type_index = info->name_and_type_index;
-                //@ close methodref_constant(mrc, class_index, nat_index);
-                //@ close methodref_constant(info, class_index, nat_index);
-                res = mrc;
-                break;
-            case NAME_AND_TYPE:
-                struct name_and_type_constant *info = c->info;
-                //@ open nat_constant(info, ?name_index, ?descriptor_index);
-                struct name_and_type_constant *ntc = malloc(sizeof(struct name_and_type_constant));
-                if(ntc == 0) {
-                    error("ERROR: insufficient memory");
-                }
-                ntc->name_index = info->name_index;
-                ntc->descriptor_index = info->descriptor_index;
-                //@ close nat_constant(ntc, name_index, descriptor_index);
-                //@ close nat_constant(info, name_index, descriptor_index);
-                res = ntc;
-                break;
+        case STRING:
+            char *string;
+            struct string_constant *info = c->info;
+            //@ open string_constant(info, ?length, ?str);
+            struct string_constant *sc = malloc(sizeof(struct string_constant));
+            if(sc == 0) {
+                error("ERROR: insufficient memory");
+            }
+            sc->length = info->length;
+            string = malloc(info->length);
+            if(string == 0) {
+                error("ERROR: insufficient memory");
+            }
+            memcpy(string, info->string, info->length);
+            sc->string = string;
+            //@ close string_constant(sc, length, string);
+            //@ close string_constant(info, length, str);
+            res = sc;
+            break;
+        case INT:
+            struct int_constant *info = c->info;
+            //@ open int_constant(info, ?value);
+            struct int_constant *ic = malloc(sizeof(struct int_constant));
+            if(ic == 0) {
+                error("ERROR: insufficient memory");
+            }
+            ic->value = info->value;
+            //@ close int_constant(ic, value);
+            //@ close int_constant(info, value);
+            res = ic;
+            break;
+        case CLASS:
+            struct class_constant *info = c->info;
+            //@ open class_constant(info, ?name_index);
+            struct class_constant *cc = malloc(sizeof(struct class_constant));
+            if(cc == 0) {
+                error("ERROR: insufficient memory");
+            }
+            cc->name_index = info->name_index;
+            //@ close class_constant(cc, name_index);
+            //@ close class_constant(info, name_index);
+            res = cc;
+            break;
+        case METHODREF:
+            struct methodref_constant *info = c->info;
+            //@ open methodref_constant(info, ?class_index, ?nat_index);
+            struct methodref_constant *mrc = malloc(sizeof(struct methodref_constant));
+            if(mrc == 0) {
+                error("ERROR: insufficient memory");
+            }
+            mrc->class_index = info->class_index;
+            mrc->name_and_type_index = info->name_and_type_index;
+            //@ close methodref_constant(mrc, class_index, nat_index);
+            //@ close methodref_constant(info, class_index, nat_index);
+            res = mrc;
+            break;
+        case NAME_AND_TYPE:
+            struct name_and_type_constant *info = c->info;
+            //@ open nat_constant(info, ?name_index, ?descriptor_index);
+            struct name_and_type_constant *ntc = malloc(sizeof(struct name_and_type_constant));
+            if(ntc == 0) {
+                error("ERROR: insufficient memory");
+            }
+            ntc->name_index = info->name_index;
+            ntc->descriptor_index = info->descriptor_index;
+            //@ close nat_constant(ntc, name_index, descriptor_index);
+            //@ close nat_constant(info, name_index, descriptor_index);
+            res = ntc;
+            break;
         default:
             error("ERROR: bad label");
         }
@@ -238,23 +247,23 @@ void *constants_clone_info_checked(struct constant *c, int expected_tag, int ind
 }
 
 /*@
-    predicate methods(struct method *method, int count) =
-        method == 0 ?
+    predicate methods(struct method *m, int count) =
+        m == 0 ?
             count == 0 :
-                malloc_block_method(method)
+                malloc_block_method(m)
                     &*& count > 0
-                    &*& method->name |-> ?name
-                    &*& method->name_length |-> ?name_length
+                    &*& m->name        |-> ?name
+                    &*& m->name_length |-> ?name_length
+                    &*& m->name_index  |-> ?name_index
+                    &*& m->max_locals  |-> ?max_locals
+                    &*& m->max_stack   |-> ?max_stack
+                    &*& m->code        |-> ?code
+                    &*& m->code_length |-> ?code_length
+                    &*& m->next        |-> ?next
                     &*& chars(name, name_length, ?name_cs)
-                    &*& malloc_block(name, name_length)
-                    &*& method->name_index |-> ?name_index
-                    &*& method->max_locals |-> ?max_locals
-                    &*& method->max_stack |-> ?max_stack
-                    &*& method->code |-> ?code
-                    &*& method->code_length |-> ?code_length
                     &*& chars(code, code_length, ?code_cs)
+                    &*& malloc_block(name, name_length)
                     &*& malloc_block(code, code_length)
-                    &*& method->next |-> ?next
                     &*& methods(next, count - 1);
 @*/
 struct method {
@@ -268,16 +277,16 @@ struct method {
     struct method *next;
 };
 
-/*@
-    predicate_family method_predicate_data(void *p)(void *data);
-@*/
-typedef bool method_predicate(struct method *method, void *data);
-//@ requires method_predicate_data(this)(data);
-//@ ensures method_predicate_data(this)(data);
-
+// /*@
+//     predicate_family method_predicate_data(void *p)(void *data);
+// @*/
+// typedef bool method_predicate(struct method *method, void *data);
+// //@ requires method_predicate_data(this)(data);
+// //@ ensures method_predicate_data(this)(data);
+// 
 // bool has_name(struct method* method, void* data) //@ : method_predicate
-//     //@ requires method_predicate_data(has_name)(name_index) &*& method(method, ?m_name, ?m_name_length, ?m_name_index, ?m_max_locals, ?m_max_stack, ?m_code, ?m_code_length, ?m_next);
-//     //@ ensures method_predicate_data(has_name)(name_index) &*& method(method, m_name, m_name_length, m_name_index, m_max_locals, m_max_stack, m_code, m_code_length, m_next);
+//     //@ requires method_predicate_data(has_name)(name_index); 
+//     //@ ensures method_predicate_data(has_name)(name_index);
 // {
 //     char* string = (char*) data;
 //     int string_length = strlen((char*)string);
@@ -291,14 +300,13 @@ typedef bool method_predicate(struct method *method, void *data);
 //     return res;
 // }
 
-
 // /*@
 //     predicate_family_instance method_predicate_data(has_name_index)(void *data) =
 //         method_name_index(data, _);
 // @*/
 // bool has_name_index(struct method *method, void *name_index) //@ : method_predicate
-//     //@ requires method(method, ?m_name, ?m_name_length, ?m_name_index, ?m_max_locals, ?m_max_stack, ?m_code, ?m_code_length, ?m_next) &*& method_predicate_data(has_name_index)(name_index);
-//     //@ ensures method(method, m_name, m_name_length, m_name_index, m_max_locals, m_max_stack, m_code, m_code_length, m_next) &*& method_predicate_data(has_name_index)(name_index) &*& result == (m_name_index == *(int *)name_index);
+//     //@ requires method_predicate_data(has_name_index)(name_index);
+//     //@ ensures method_predicate_data(has_name_index)(name_index) &*& result == (m_name_index == *(int *)name_index);
 // {
 //     //@ open method(method, m_name, m_name_length, m_name_index, m_max_locals, m_max_stack, m_code, m_code_length, m_next);
 //     return method->name_index == *(int *)name_index;
@@ -327,37 +335,34 @@ typedef bool method_predicate(struct method *method, void *data);
 //     }
 // }
 
-
-//             FIXME: removed from class_file_with_constants
-
 /*@
-    predicate empty_class_file(struct class_file *class_file) =
-        malloc_block_class_file(class_file)
-            &*& class_file->constant_count |-> ?constant_count
-            &*& class_file->constants |-> ?constants
-            &*& class_file->field_count |-> ?field_count
-            &*& class_file->method_count |-> ?method_count
-            &*& class_file->methods |-> ?methods;
+    predicate empty_class_file(struct class_file *cf) =
+        malloc_block_class_file(cf)
+            &*& cf->constant_count |-> ?constant_count
+            &*& cf->constants      |-> ?constants
+            &*& cf->field_count    |-> ?field_count
+            &*& cf->method_count   |-> ?method_count
+            &*& cf->methods        |-> ?methods;
 
-    predicate class_file_with_constants(struct class_file *class_file, struct method *methods) =
-        malloc_block_class_file(class_file)
-            &*& class_file->constant_count |-> ?constant_count
-            &*& class_file->constants |-> ?constants
+    predicate class_file_with_constants(struct class_file *cf, struct method *methods) =
+        malloc_block_class_file(cf)
+            &*& cf->constant_count |-> ?constant_count
+            &*& cf->constants      |-> ?constants
+            &*& cf->field_count    |-> ?field_count
+            &*& cf->method_count   |-> ?method_count
+            &*& cf->methods        |-> methods
             &*& constants(constants, ?constant_values)
-            &*& constant_count == length(constant_values) + 1
-            &*& class_file->field_count |-> ?field_count
-            &*& class_file->method_count |-> ?method_count
-            &*& class_file->methods |-> methods;
+            &*& constant_count == length(constant_values) + 1;
 
-    predicate class_file_with_methods(struct class_file *class_file) =
-        malloc_block_class_file(class_file)
-            &*& class_file->constant_count |-> ?constant_count
-            &*& class_file->constants |-> ?constants
+    predicate class_file_with_methods(struct class_file *cf) =
+        malloc_block_class_file(cf)
+            &*& cf->constant_count |-> ?constant_count
+            &*& cf->constants      |-> ?constants
+            &*& cf->field_count    |-> ?field_count
+            &*& cf->method_count   |-> ?method_count
+            &*& cf->methods        |-> ?methods
             &*& constants(constants, ?values)
             &*& constant_count == length(values) + 1
-            &*& class_file->field_count |-> ?field_count
-            &*& class_file->method_count |-> ?method_count
-            &*& class_file->methods |-> ?methods
             &*& methods(methods, method_count);
 @*/
 struct class_file {
@@ -369,8 +374,8 @@ struct class_file {
 };
 
 void parse_constant_pool(struct chars_reader *reader, struct class_file *class_file)
-//@ requires chars_reader(reader,?buffer,?size,?f) &*& empty_class_file(class_file);
-//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_constants(class_file, _);
+//@ requires chars_reader(reader, ?buffer, ?size, ?f) &*& empty_class_file(class_file);
+//@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_constants(class_file, _);
 {
     struct constant *constants;
     int i;
@@ -379,10 +384,10 @@ void parse_constant_pool(struct chars_reader *reader, struct class_file *class_f
     if(constant_count < (unsigned short) 1)
         error("ERROR: constant count must be at least one");
     constants = 0;
-    //@ close constants(0,nil<void*>);
+    //@ close constants(0, nil<void*>);
 
     for(i = 1; i < constant_count; i++)
-        //@ invariant chars_reader(reader,buffer,size,f) &*& i >= 1 &*& i <= constant_count &*& constants(constants, ?values) &*& length(values) == i - 1;
+        //@ invariant chars_reader(reader, buffer, size, f) &*& i >= 1 &*& i <= constant_count &*& constants(constants, ?values) &*& length(values) == i - 1;
     {
         unsigned char tag;
 
@@ -492,8 +497,6 @@ void parse_constant_pool(struct chars_reader *reader, struct class_file *class_f
         //@ close const_info(constant->info,tag);
         //@ close constants(constants,cons<void*>(constant,values));
     }
-
-
     //@ open empty_class_file(class_file);
     constants = constants_reverse(constants);
     class_file->constant_count = constant_count;
@@ -521,8 +524,8 @@ int parse_attributes(struct chars_reader *reader)
 }
 
 void parse_fields(struct chars_reader *reader, struct class_file *class_file)
-//@ requires chars_reader(reader,?buffer,?size,?f) &*& class_file_with_constants(class_file, ?methods);
-//@ ensures chars_reader(reader,buffer,size,f) &*& class_file_with_constants(class_file, methods);
+//@ requires chars_reader(reader, ?buffer, ?size, ?f) &*& class_file_with_constants(class_file, ?methods);
+//@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_constants(class_file, methods);
 
 {
     int i;
@@ -530,7 +533,7 @@ void parse_fields(struct chars_reader *reader, struct class_file *class_file)
     //@ open class_file_with_constants(class_file, methods);
     class_file->field_count = field_count;
     for(i = 0; i < field_count; i++)
-        //@ invariant chars_reader(reader,buffer,size,f) &*& i >= 0 &*& i <= field_count;
+        //@ invariant chars_reader(reader, buffer, size, f) &*& i >= 0 &*& i <= field_count;
     {
         unsigned short access_flags = reader_next_uint16(reader);
         unsigned short name_index = reader_next_uint16(reader);
@@ -540,111 +543,112 @@ void parse_fields(struct chars_reader *reader, struct class_file *class_file)
     //@ close class_file_with_constants(class_file, methods);
 }
 
-void parse_methods(struct chars_reader *reader, struct class_file *class_file)
-    //@ requires chars_reader(reader, ?buffer, ?size, ?f) &*& class_file_with_constants(class_file, _);
-    //@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_methods(class_file);
-{
-    int i;
-    unsigned short method_count = reader_next_uint16(reader);
-    //@open class_file_with_constants(class_file, _);
-    class_file->method_count = method_count;
-    class_file->methods = 0;
-    //@ close methods(0, 0);
-    //@ close class_file_with_constants(class_file, 0);
-    for(i = 0; i < method_count; i++)
-        //@ invariant i >= 0 &*& i <= method_count &*& class_file_with_constants(class_file, ?methods) &*& methods(methods, i) &*& chars_reader(reader, buffer, size, f);
-    {
-        unsigned short access_flags, name_index, descriptor_index, max_stack, max_locals;
-        int pre_attrib_offset, offset, code_length, code_offset, attributes_count;
-        unsigned int ucode_length;
-        char *code;
-        struct string_constant *name_constant;
-        struct method *method = malloc(sizeof(struct method));
-        if(method == 0) error("Insufficient memory");
-        //@ open class_file_with_constants(class_file, methods);
-        method->next = class_file->methods;
-        access_flags = reader_next_uint16(reader);
-        name_index = reader_next_uint16(reader);
-        method->name_index = name_index;
-        if(name_index < 1 ||  name_index >= class_file->constant_count) {
-            error("ERROR: bad index");
-        }
-        name_constant = constants_clone_info(class_file->constants, STRING, name_index);
-        //@ open const_info(name_constant, STRING);
-        //@ open string_constant(name_constant, ?length, ?str);
-        method->name = name_constant->string;
-        method->name_length = name_constant->length;
-        free(name_constant);
-        descriptor_index = reader_next_uint16(reader);
-        pre_attrib_offset = reader_get_offset(reader);
-        reader_skip(reader, 8);
-        max_stack = reader_next_uint16(reader);
-        method->max_stack = max_stack;
-        max_locals = reader_next_uint16(reader);
-        method->max_locals = max_locals;
-        offset = reader_get_offset(reader);
-        ucode_length = reader_next_uint32(reader);
-        if(ucode_length > (unsigned int) INT_MAX) {
-            error("ERROR: code length not supported yet");
-        }
-        code_length = (int) ucode_length;
-        method->code_length = code_length;
-        code_offset = reader_get_offset(reader);
-        code = reader_next_chars(reader, code_length);
-        method->code = code;
-        reader_set_offset(reader, pre_attrib_offset);
-        attributes_count = parse_attributes(reader);
-        class_file->methods = method;
-        //@ close methods(method, i + 1);
-        //@ close class_file_with_constants(class_file, method);
-    }
-    //@ open class_file_with_constants(class_file, ?methods);
-    //@ close class_file_with_methods(class_file);
-}
-
-struct class_file *parse_class_file(struct chars_reader *reader)
-//@ requires chars_reader(reader, ?buffer, ?size, ?f);
-//@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_constants(result, _);
-{
-    unsigned short minor_version, major_version, access_flags, this_class, super_class, interfaces_count;
-    unsigned int magic;
-    struct class_file *class_file = malloc(sizeof(struct class_file));
-    int offset = 0;
-    int i, attributes_count;
-    if(class_file == 0)
-        error("ERROR: insufficient memory");
-    //@ close empty_class_file(class_file);
-    magic = reader_next_uint32(reader);
-    minor_version = reader_next_uint16(reader);
-    major_version = reader_next_uint16(reader);
-    parse_constant_pool(reader, class_file);
-    access_flags = reader_next_uint16(reader);
-    this_class = reader_next_uint16(reader);
-    super_class = reader_next_uint16(reader);
-    interfaces_count = reader_next_uint16(reader);
-    for(i = 0; i < interfaces_count; i++)
-        //@ invariant chars_reader(reader,buffer,size,f) &*& i >= 0 &*& i <= interfaces_count ;
-    {
-        unsigned short interfaces_index = reader_next_uint16(reader);
-    }
-    parse_fields(reader, class_file);
-    parse_methods(reader, class_file);
-    //attributes_count = parse_attributes(reader);
-    return class_file;
-}
+// void parse_methods(struct chars_reader *reader, struct class_file *class_file)
+// //@ requires chars_reader(reader, ?buffer, ?size, ?f) &*& class_file_with_constants(class_file, _);
+// //@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_methods(class_file);
+// {
+//     int i;
+//     unsigned short method_count = reader_next_uint16(reader);
+//     //@open class_file_with_constants(class_file, _);
+//     class_file->method_count = method_count;
+//     class_file->methods = 0;
+//     //@ close methods(0, 0);
+//     //@ close class_file_with_constants(class_file, 0);
+//     for(i = 0; i < method_count; i++)
+//         //@ invariant i >= 0 &*& i <= method_count &*& class_file_with_constants(class_file, ?methods) &*& methods(methods, i) &*& chars_reader(reader, buffer, size, f);
+//     {
+//         unsigned short access_flags, name_index, descriptor_index, max_stack, max_locals;
+//         int pre_attrib_offset, offset, code_length, code_offset, attributes_count;
+//         unsigned int ucode_length;
+//         char *code;
+//         struct string_constant *name_constant;
+//         struct method *method = malloc(sizeof(struct method));
+//         if(method == 0) error("Insufficient memory");
+//         //@ open class_file_with_constants(class_file, methods);
+//         method->next = class_file->methods;
+//         access_flags = reader_next_uint16(reader);
+//         name_index = reader_next_uint16(reader);
+//         method->name_index = name_index;
+//         if(name_index < 1 ||  name_index >= class_file->constant_count) {
+//             error("ERROR: bad index");
+//         }
+//         name_constant = constants_clone_info(class_file->constants, STRING, name_index);
+//         //@ open const_info(name_constant, STRING);
+//         //@ open string_constant(name_constant, ?length, ?str);
+//         method->name = name_constant->string;
+//         method->name_length = name_constant->length;
+//         free(name_constant);
+//         descriptor_index = reader_next_uint16(reader);
+//         pre_attrib_offset = reader_get_offset(reader);
+//         reader_skip(reader, 8);
+//         max_stack = reader_next_uint16(reader);
+//         method->max_stack = max_stack;
+//         max_locals = reader_next_uint16(reader);
+//         method->max_locals = max_locals;
+//         offset = reader_get_offset(reader);
+//         ucode_length = reader_next_uint32(reader);
+//         if(ucode_length > (unsigned int) INT_MAX) {
+//             error("ERROR: code length not supported yet");
+//         }
+//         code_length = (int) ucode_length;
+//         method->code_length = code_length;
+//         code_offset = reader_get_offset(reader);
+//         code = reader_next_chars(reader, code_length);
+//         method->code = code;
+//         reader_set_offset(reader, pre_attrib_offset);
+//         attributes_count = parse_attributes(reader);
+//         class_file->methods = method;
+//         //@ close methods(method, i + 1);
+//         //@ close class_file_with_constants(class_file, method);
+//     }
+//     //@ open class_file_with_constants(class_file, ?methods);
+//     //@ close class_file_with_methods(class_file);
+// }
+// 
+// struct class_file *parse_class_file(struct chars_reader *reader)
+// //@ requires chars_reader(reader, ?buffer, ?size, ?f);
+// //@ ensures chars_reader(reader, buffer, size, f) &*& class_file_with_constants(result, _);
+// {
+//     unsigned short minor_version, major_version, access_flags, this_class, super_class, interfaces_count;
+//     unsigned int magic;
+//     struct class_file *class_file = malloc(sizeof(struct class_file));
+//     int offset = 0;
+//     int i, attributes_count;
+//     if(class_file == 0)
+//         error("ERROR: insufficient memory");
+//     //@ close empty_class_file(class_file);
+//     magic = reader_next_uint32(reader);
+//     minor_version = reader_next_uint16(reader);
+//     major_version = reader_next_uint16(reader);
+//     parse_constant_pool(reader, class_file);
+//     access_flags = reader_next_uint16(reader);
+//     this_class = reader_next_uint16(reader);
+//     super_class = reader_next_uint16(reader);
+//     interfaces_count = reader_next_uint16(reader);
+//     for(i = 0; i < interfaces_count; i++)
+//         //@ invariant chars_reader(reader, buffer, size, f) &*& i >= 0 &*& i <= interfaces_count ;
+//     {
+//         unsigned short interfaces_index = reader_next_uint16(reader);
+//     }
+//     parse_fields(reader, class_file);
+//     //parse_methods(reader, class_file);
+//     //attributes_count = parse_attributes(reader);
+//     return class_file;
+// }
 
 //              FIXME: Removed from predicate node
 //              &*& (thread != 0 ? thread(thread, ?thread_run, ?data, ?info) : thread == 0)
+
 /*@
-    predicate node(struct node *node, int value, struct thread *thread, struct node *next) =
-            malloc_block_node(node)
-                &*& node->value |-> value
-                &*& node->thread |-> thread
-                &*& node->next |-> next;
-    predicate nodes(struct node *node, list<int> values) =
+    predicate node(struct node *n, int value, struct thread *thread, struct node *next) =
+            malloc_block_node(n)
+                &*& n->value  |-> value
+                &*& n->thread |-> thread
+                &*& n->next   |-> next;
+    predicate nodes(struct node *n, list<int> values) =
         values == nil<int> ?
-            node == 0 :
-                node(node, ?value, ?thread, ?next)
+            n == 0 :
+                node(n, ?value, ?thread, ?next)
                     &*& nodes(next, ?tail)
                     &*& values == cons<int>(value, tail);
 @*/
@@ -659,9 +663,9 @@ int node_get_value(struct node *n)
 //@ ensures node(n, value, 0, next) &*& result == value;
 {
     //@ open node(n, value, thread, next);
-    // if(n->thread != 0) {
-    //     thread_join(n->thread);
-    // }
+    if(n->thread != 0) {
+        // FIXME: thread_join(n->thread);
+    }
     n->thread = 0;
     return n->value;
     //@ close node(n, value, 0, next);
@@ -672,9 +676,9 @@ void node_set_value(struct node *n, int value)
 //@ ensures node(n, value, 0, next);
 {
     //@ open node(n, _, thread, next);
-    // if(n->thread != 0) {
-    //     thread_join(n->thread);
-    // }
+    if(n->thread != 0) {
+        // FIXME: thread_join(n->thread);
+    }
     n->thread = 0;
     n->value = value;
     //@ close node(n, value, 0, next);
@@ -714,16 +718,16 @@ void node_set_value(struct node *n, int value)
         close nodes(first, values);
     }
 
-    lemma void lseg_append_lemma(struct node *first)
-        requires lseg(first, ?last, ?first_values) &*& lseg(last, 0, ?last_values);
-        ensures lseg(first, 0, append<int>(first_values, last_values));
+    lemma void lseg_append_lemma(struct node *one)
+        requires lseg(one, ?two, ?one_values) &*& lseg(two, 0, ?two_values);
+        ensures lseg(one, 0, append<int>(one_values, two_values));
     {
-        open lseg(first, last, first_values);
-        if (first_values != nil<int>) {
-            open node(first, ?value, ?thread, ?next);
-            lseg_append_lemma(first->next);
-            close node(first, value, thread, next);
-            close lseg(first, 0, append<int>(first_values, last_values));
+        open lseg(one, two, one_values);
+        if (one_values != nil<int>) {
+            open node(one, ?value, ?thread, ?next);
+            lseg_append_lemma(one->next);
+            close node(one, value, thread, next);
+            close lseg(one, 0, append<int>(one_values, two_values));
         }
     }
 @*/
@@ -746,10 +750,10 @@ struct node *node_at(struct node *n, int index)
 }
 
 /*@
-    predicate stack(struct stack *stack, list<int> values) =
-        malloc_block_stack(stack)
-            &*& stack->top |-> ?top
-            &*& stack->count |-> ?count
+    predicate stack(struct stack *s, list<int> values) =
+        malloc_block_stack(s)
+            &*& s->top   |-> ?top
+            &*& s->count |-> ?count
             &*& count == length(values)
             &*& nodes(top, values);
 @*/
@@ -837,11 +841,11 @@ int stack_count(struct stack *s)
     //@ close stack(s, values);
 }
 
-// int stack_get(struct stack* s, int index_from_bottom)
-//     //@ requires stack(s, ?values) &*& index_from_bottom >= 0 &*& index_from_bottom < length(values) &*& length(values) > 0;
-//     //@ ensures stack(s, values) &*& result == nth(length(values) - index_from_bottom, values);
+// int stack_get(struct stack *s, int index_from_bottom)
+// //@ requires stack(s, ?values) &*& index_from_bottom >= 0 &*& index_from_bottom < length(values) &*& length(values) > 0;
+// //@ ensures stack(s, values) &*& result == nth(length(values) - index_from_bottom, values);
 // {
-//     struct node* n;
+//     struct node *n;
 //     //@ open stack(s, values);
 //     if(s->count <= index_from_bottom) {
 //         error("ERROR: bad stack index");
@@ -855,11 +859,11 @@ int stack_count(struct stack *s)
 //     //@ close stack(s, values);
 // }
 
-// void stack_set(struct stack* s, int index_from_bottom, int value)
-//     //@ requires stack(s, ?values) &*& index_from_bottom >= 0 &*& index_from_bottom < length(values);
-//     //@ ensures stack(s, values) &*& value == nth(length(values) - index_from_bottom, values);
+// void stack_set(struct stack *s, int index_from_bottom, int value)
+// //@ requires stack(s, ?values) &*& index_from_bottom >= 0 &*& index_from_bottom < length(values);
+// //@ ensures stack(s, values) &*& value == nth(length(values) - index_from_bottom, values);
 // {
-//     struct node* n;
+//     struct node *n;
 //     //@ open stack(s, values);
 //     if(s->count <= index_from_bottom) {
 //         error("ERROR: bad stack index");
@@ -873,16 +877,16 @@ int stack_count(struct stack *s)
 
 // TODO: check declaration, not sure whether right...
 /*@
-    predicate new_thread_info(struct new_thread_info *new_thread_info, struct class_file *class_file, struct stack *stack, char *code, int code_length, int max_locals, int args_size, struct node *node) =
-        malloc_block_new_thread_info(new_thread_info)
-            &*& new_thread_info->class_file |-> class_file
-            &*& new_thread_info->stack |-> stack
+    predicate new_thread_info(struct new_thread_info *nti, struct class_file *class_file, struct stack *stack, char *code, int code_length, int max_locals, int args_size, struct node *node) =
+        malloc_block_new_thread_info(nti)
+            &*& nti->class_file  |-> class_file
+            &*& nti->stack       |-> stack
+            &*& nti->code        |-> code
+            &*& nti->code_length |-> code_length
+            &*& nti->max_locals  |-> max_locals
+            &*& nti->args_size   |-> args_size
+            &*& nti->node        |-> node
             &*& stack(stack, ?stack_count)
-            &*& new_thread_info->code |-> code
-            &*& new_thread_info->code_length |-> code_length
-            &*& new_thread_info->max_locals |-> max_locals
-            &*& new_thread_info->args_size |-> args_size
-            &*& new_thread_info->node |-> node
             &*& nodes(node, ?values);
 @*/
 struct new_thread_info {
@@ -904,8 +908,8 @@ struct new_thread_info {
 //     stack_dispose(info->stack);
 //     free(info);
 // }
-//
-//
+// 
+// 
 // void stack_start_thread(struct stack* s, int index_from_bottom, struct new_thread_info* info)
 // {
 //     struct thread* thread;
@@ -964,21 +968,28 @@ struct new_thread_info {
 //     *args_size = arg_count;
 //     reader_dispose(reader);
 // }
-//
+
 // bool chars_starts_with(char* c, int clength, char* string)
+//     //@ requires chars(c, clength, ?c_cs) &*& string(string, ?string_cs);
+//     //@ ensures chars(c, clength, c_cs) &*& string(string, string_cs) &*& result == (take(min(clength, length(string_cs)), string_cs) == take(min(clength, length(string_cs)), c_cs));
 // {
 //     int string_length = strlen(string);
 //     if(string_length == 0) {
 //         return true;
 //     } else {
+//         //@ open chars(c, clength, c_cs);
+//         //@ open string(string, string_cs);
 //         if(0 < clength && *c == *string) {
 //             return chars_starts_with(c + 1, clength - 1, string + 1);
+//             //@ close string(string, string_cs);
+//             //@ close chars(c, clength, c_cs);
 //         } else {
 //             return false;
 //         }
+//         
 //     }
 // }
-//
+
 // void execute_code(struct class_file* class_file, struct stack* s, char* code, int code_length, int max_locals, int args_size)
 // {
 //     int i, preinstr_count;
@@ -1337,7 +1348,7 @@ struct new_thread_info {
 //                     error("ERROR: insufficient arguments");
 //                 for(i = 0; i < nb_args; i++)
 //                 {
-//
+// 
 //                     int val = stack_get(s, current_stack_size - nb_args + i );
 //                     stack_push(new_stack, val);
 //                 }
@@ -1429,7 +1440,7 @@ struct new_thread_info {
 //         }
 //     }
 // }
-//
+// 
 // int execute_class_file(struct class_file* class_file)
 // {
 //     int max_locals;
@@ -1445,7 +1456,7 @@ struct new_thread_info {
 //     stack_dispose(s);
 //     return exit_value;
 // }
-//
+// 
 // int main(int argc, char** argv)
 // {
 //     char* buffer;
